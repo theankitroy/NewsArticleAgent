@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from rss_feeds import RSS_FEEDS
 from rss_parser import fetch_feed
+from utils import PRESET_PARODIES, generate_parody_from_news, load_ideas, save_ideas, generate_comedy_with_groq, DEFAULT_GROQ_KEY, generate_live_trends_with_groq, generate_fallback_live_trends, load_problem_solving, save_problem_solving, generate_new_problem_with_groq
 
 # 1. Page Configuration & Theme Initialization
 st.set_page_config(
@@ -16,19 +17,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Inject Custom Premium CSS (Aesthetics & UX)
 custom_css = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
 
-/* Global Font Override */
-html, body, [class*="css"], [class*="st-"] {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-}
 
-/* Hide Default Streamlit Menu & Footer for White-labeled SaaS look */
-#MainMenu {visibility: hidden;}
-header {visibility: hidden;}
+/* Hide Default Streamlit Menu, Deploy Button, & Footer for clean look */
+
+.stAppDeployButton {visibility: hidden; display: none !important;}
 footer {visibility: hidden;}
 
 /* Adjust margins/padding of main layout */
@@ -297,8 +292,10 @@ st.markdown(
 )
 
 # Active tab definition
-tab_live, tab_saved, tab_analytics, tab_diag = st.tabs([
+tab_live, tab_parody, tab_problems, tab_saved, tab_analytics, tab_diag = st.tabs([
     "📰 Live Intel Feed",
+    "🎙️ Creator & Parody Studio",
+    "🧩 Problem Solving",
     "⭐ Saved Bookmarks",
     "📊 Platform Analytics",
     "⚙️ Feed Health System"
@@ -459,7 +456,679 @@ with tab_live:
                                 unsafe_allow_html=True
                             )
 
-# 9. SAVED BOOKMARKS TAB
+# 9. CREATOR & PARODY STUDIO TAB
+with tab_parody:
+    st.markdown(
+        """
+        <div style='background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(236, 72, 153, 0.05) 100%); padding: 25px; border-radius: 18px; border: 1px solid rgba(168, 85, 247, 0.2); margin-bottom: 2rem;'>
+            <h2 style='color: #f8fafc; font-weight: 800; font-size: 1.8rem; margin: 0;'>🎙️ Corporate Creator & Parody Studio</h2>
+            <p style='color: #cbd5e1; font-size: 1rem; margin-top: 5px; margin-bottom: 0;'>
+                Turn dry corporate tech news into viral comedies, reels/shorts scripts, and parody songs. Target the tech-office crowd (devs, PMs, remote workers, IT managers) who love to laugh at their own pain.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    studio_tab_vault, studio_tab_generator, studio_tab_ideas = st.tabs([
+        "🔥 Live Meme & Reels Formats",
+        "🤖 AI React & Script Generator",
+        "💡 Creator Ideas Board"
+    ])
+    
+    # --- SUB-TAB 1: LIVE MEME & REELS FORMATS ---
+    with studio_tab_vault:
+        st.markdown(
+            """
+            <div style='margin-bottom: 1.5rem;'>
+                <h3 style='color: #f8fafc; font-size: 1.3rem; font-weight:700;'>🔥 Live Meme & Reels Formats</h3>
+                <p style='color: #94A3B8; font-size:0.9rem;'>Dynamically analyze the latest tech news stories and generate viral Reels/TikTok B-roll concepts, hooks, and overlay captions.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Audience toggle inside trends tab
+        trend_col1, trend_col2 = st.columns([2, 1])
+        with trend_col1:
+            trend_audience = st.radio(
+                "🌏 Region Focus",
+                ["🌐 Global Tech Bro", "🇮🇳 Indian Corporate"],
+                index=0,
+                horizontal=True,
+                key="trend_audience_selection",
+                help="Tailors the trending jokes and reference points to the selected region."
+            )
+        with trend_col2:
+            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+            refresh_trends = st.button("🔄 Generate Live Trends", key="refresh_trends_btn", use_container_width=True)
+            
+        trend_audience_val = "Indian" if "Indian" in trend_audience else "Global"
+        
+        # Check if trends are cached in session state or need generation
+        if "live_trends" not in st.session_state:
+            st.session_state.live_trends = None
+            st.session_state.cached_audience = None
+            
+        # Trigger generation if clicked or if empty or if audience focus changed
+        if refresh_trends or st.session_state.live_trends is None or st.session_state.cached_audience != trend_audience_val:
+            with st.spinner("Analyzing active feeds and drafting memes via Groq LLM..."):
+                st.session_state.cached_audience = trend_audience_val
+                
+                # Retrieve active news items
+                news_list = []
+                if not df_all.empty:
+                    news_list = df_all.to_dict('records')
+                
+                try:
+                    if len(news_list) > 0:
+                        # Call Groq LLM with latest articles
+                        res = generate_live_trends_with_groq(DEFAULT_GROQ_KEY, news_list, trend_audience_val)
+                        st.session_state.live_trends = res.get("trends", [])
+                    else:
+                        # No news loaded, use fallback
+                        res = generate_fallback_live_trends(trend_audience_val)
+                        st.session_state.live_trends = res.get("trends", [])
+                except Exception as e:
+                    st.warning(f"Groq API call failed. Using local template trends fallback. Error: {e}")
+                    res = generate_fallback_live_trends(trend_audience_val)
+                    st.session_state.live_trends = res.get("trends", [])
+                    
+        # Render the trending memes in cards
+        if st.session_state.live_trends:
+            # 2-column grid layout
+            trend_grid = st.columns(2)
+            for idx, trend in enumerate(st.session_state.live_trends):
+                target_col = trend_grid[idx % 2]
+                with target_col:
+                    with st.container(border=True):
+                        st.markdown(
+                            f"""
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="background-color: rgba(99, 102, 241, 0.15); color: #818CF8; border: 1px solid rgba(99, 102, 241, 0.3); padding: 3px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">
+                                    📹 {trend.get('video_type', 'Reels Format')}
+                                </span>
+                                <span style="color: #34D399; font-size: 0.75rem; font-weight: 700;">
+                                    🔥 Relatable
+                                </span>
+                            </div>
+                            <h3 style="color: #f8fafc; font-size: 1.25rem; font-weight: 800; margin: 4px 0 6px 0;">{trend.get('title', 'Untitled Trend')}</h3>
+                            <p style="color: #64748B; font-size: 0.75rem; margin-bottom: 12px;"><b>Inspired by:</b> {trend.get('news_inspiration', 'Latest News')}</p>
+                            
+                            <div style="background-color: rgba(99, 102, 241, 0.08); border-left: 4px solid #6366F1; padding: 10px; border-radius: 4px; margin-bottom: 12px;">
+                                <span style="color:#818CF8; font-size:0.7rem; font-weight:700; text-transform:uppercase;">🪝 Video Hook (Text Overlay)</span>
+                                <div style="margin:2px 0 0 0; color:#f8fafc; font-size:0.9rem; font-weight:700;">"{trend.get('video_hook', '')}"</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        
+                        # Expanders for recording details
+                        with st.expander("📷 B-Roll Recording Guide"):
+                            b_roll_clean = trend.get('visual_b_roll', '').replace('->', ' ➡️ ')
+                            st.markdown(f"<div style='color:#cbd5e1; font-size:0.85rem; line-height:1.45;'>{b_roll_clean}</div>", unsafe_allow_html=True)
+                            
+                        with st.expander("💬 Text Overlay Schedule"):
+                            overlay_html = ""
+                            for s_idx, slide in enumerate(trend.get('text_overlays', [])):
+                                overlay_html += f"<div style='margin-bottom:6px; font-size:0.82rem; color:#f8fafc;'><b>Slide {s_idx+1}:</b> {slide}</div>"
+                            st.markdown(overlay_html, unsafe_allow_html=True)
+                            
+                        with st.expander("🔊 Background Music Style"):
+                            st.markdown(f"<div style='color:#94a3b8; font-size:0.82rem;'>🎵 <i>{trend.get('bg_music', 'Sarcastic office beat')}</i></div>", unsafe_allow_html=True)
+                            
+                        with st.expander("💡 Relatability / Sharing Hook"):
+                            st.markdown(f"<div style='color:#a78bfa; font-size:0.82rem; font-style:italic;'>{trend.get('relatability_reason', '')}</div>", unsafe_allow_html=True)
+                            
+                        # Save action
+                        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+                        if st.button(f"💾 Save Trend Concept: {trend.get('title')}", key=f"save_trend_card_{idx}", use_container_width=True):
+                            ideas = load_ideas()
+                            
+                            blueprint_md = f"""### 🪝 Hook (Text on Screen)
+"{trend.get('video_hook', '')}"
+
+### 🔊 BG Music Recommendation
+{trend.get('bg_music', '')}
+
+### 🎥 Visual B-Roll Guide
+{trend.get('visual_b_roll', '')}
+
+### 💬 Text Overlays
+""" + "\n".join([f"- {txt}" for txt in trend.get('text_overlays', [])])
+
+                            new_idea = {
+                                "title": trend.get('title', 'Trending Meme'),
+                                "original_song": f"Background Audio ({trend.get('bg_music', '')})",
+                                "target_audience": f"Trending ({trend_audience_val} Focus)",
+                                "lyrics": f"Relatability Reason: {trend.get('relatability_reason', '')}",
+                                "creator_blueprint": blueprint_md,
+                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
+                            }
+                            ideas.append(new_idea)
+                            save_ideas(ideas)
+                            st.toast("Saved trend concept to Ideas Board!", icon="💾")
+                            time.sleep(0.3)
+                            st.rerun()
+
+    # --- SUB-TAB 2: CORPORATE-TO-MEME GENERATOR ---
+    with studio_tab_generator:
+        st.markdown(
+            """
+            <div style='margin-bottom: 1.5rem;'>
+                <h3 style='color: #f8fafc; font-size: 1.3rem; font-weight:700;'>🤖 AI React & Script Generator (Groq-Powered)</h3>
+                <p style='color: #94A3B8; font-size:0.9rem;'>Select a trending news article from your feed, choose your comedic persona, and let Groq generate scripts, parodies, and reaction hooks on the right.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # We use a 2-column layout. Left: Inputs & Choose News. Right: Generated Script & Assets.
+        gen_col_left, gen_col_right = st.columns([2, 3])
+        
+        with gen_col_left:
+            # 1. Groq Settings Container
+            with st.container(border=True):
+                st.markdown("<b style='color:#f8fafc;'>⚙️ Groq LLM Configuration</b>", unsafe_allow_html=True)
+                groq_key = st.text_input(
+                    "🔑 Groq API Key", 
+                    value=DEFAULT_GROQ_KEY, 
+                    type="password",
+                    help="Free API Key is pre-loaded. You can replace it with your own key if needed.",
+                    key="groq_api_key"
+                )
+                comedy_tone = st.selectbox(
+                    "🎭 Comedy Tone / Persona",
+                    [
+                        "Sarcastic & Relatable Dev", 
+                        "Existential Dev Dread (Overworked Coder)", 
+                        "Toxic Positivity PM (Story Points & Agile)", 
+                        "Boomer Manager (In-Person Synergy)", 
+                        "Hyper-Active TikTok Creator"
+                    ],
+                    index=0
+                )
+                audience_focus = st.radio(
+                    "🌏 Target Audience Region",
+                    ["🌐 Global Tech Bro", "🇮🇳 Indian Corporate"],
+                    index=0,
+                    horizontal=True,
+                    help="Tailors the generated jokes, B-roll cues, and local references to your selected region."
+                )
+                
+            # 2. Trending News Selector Container
+            with st.container(border=True):
+                st.markdown("<b style='color:#f8fafc;'>📻 Select Latest Trending News</b>", unsafe_allow_html=True)
+                
+                source_opt = ["Enter Manually"]
+                article_map = {}
+                
+                # Add bookmarks if any
+                if st.session_state.bookmarks:
+                    for link, b in st.session_state.bookmarks.items():
+                        title_short = b['title'][:55] + "..." if len(b['title']) > 55 else b['title']
+                        label = f"⭐ Saved: {title_short}"
+                        source_opt.append(label)
+                        article_map[label] = {
+                            "title": b['title'],
+                            "clean_summary": b['clean_summary'],
+                            "source": b['source']
+                        }
+                
+                # Add latest feed items
+                if not df_all.empty:
+                    latest_articles = df_all.sort_values(by="timestamp", ascending=False).head(15)
+                    for idx, r in latest_articles.iterrows():
+                        title_short = r['title'][:55] + "..." if len(r['title']) > 55 else r['title']
+                        label = f"🔥 {r['source']}: {title_short}"
+                        if label not in source_opt:
+                            source_opt.append(label)
+                            article_map[label] = {
+                                "title": r['title'],
+                                "clean_summary": r['clean_summary'],
+                                "source": r['source']
+                            }
+                
+                selected_article_label = st.selectbox(
+                    "📄 Choose Article",
+                    source_opt,
+                    key="parody_source_article_v2",
+                    help="Select a trending news article from the active feed to react to and generate content."
+                )
+                
+                if selected_article_label == "Enter Manually":
+                    inp_title = st.text_input("Headline / Topic", key="parody_manual_title_v2", placeholder="e.g. ChatGPT replaces senior developers")
+                    inp_summary = st.text_area("Article Summary / Details", key="parody_manual_summary_v2", placeholder="e.g. A company announced that they are replacing coders...")
+                else:
+                    article_data = article_map[selected_article_label]
+                    inp_title = st.text_input("Headline / Topic", key="parody_mapped_title_v2", value=article_data['title'])
+                    inp_summary = st.text_area("Article Summary / Details", key="parody_mapped_summary_v2", value=article_data['clean_summary'])
+            
+            run_gen = st.button("🚀 Generate Comedy Package", key="parody_run_button_v2", use_container_width=True)
+            
+            if run_gen:
+                if not inp_title:
+                    st.error("Please enter a news headline or topic.")
+                elif not groq_key:
+                    st.error("Please provide a valid Groq API key.")
+                else:
+                    audience_val = "Indian" if "Indian" in audience_focus else "Global"
+                    with st.spinner("Writing B-roll comedy script via Groq LLM..."):
+                        try:
+                            res = generate_comedy_with_groq(groq_key, inp_title, inp_summary, comedy_tone, audience_val)
+                            st.session_state.current_comedy = res
+                            st.toast("Comedy script generated successfully!", icon="🔥")
+                        except Exception as e:
+                            st.warning(f"Groq API call failed. Using local template engine fallback. Error: {e}")
+                            res = generate_parody_from_news(inp_title, inp_summary, audience_val)
+                            st.session_state.current_comedy = res
+                            
+        with gen_col_right:
+            if "current_comedy" not in st.session_state:
+                st.session_state.current_comedy = None
+                
+            if st.session_state.current_comedy is None:
+                st.markdown(
+                    """
+                    <div style='padding: 80px 20px; text-align: center; border: 1px dashed rgba(255,255,255,0.08); border-radius: 18px; background: rgba(255,255,255,0.01); height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;'>
+                        <h4 style='color: #64748B; margin-top:0;'>🎬 Content Script Panel (Right Side)</h4>
+                        <p style='color: #475569; font-size: 0.85rem; max-width: 320px;'>
+                            Choose a trending news item on the left, select your persona tone, and click <b>Generate Comedy Package</b> to generate content scripts in real-time.
+                        </p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                comedy_output = st.session_state.current_comedy
+                video_blueprint = comedy_output.get('video_blueprint', {})
+                audience_val = "Indian" if "Indian" in audience_focus else "Global"
+                
+                st.markdown(
+                    f"""
+                    <div style='background-color: rgba(168, 85, 247, 0.05); padding: 12px; border-radius: 10px; border: 1px solid rgba(168, 85, 247, 0.2); margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;'>
+                        <div>
+                            <span style='color: #A78BFA; font-size: 0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;'>Category:</span>
+                            <span style='color: #f8fafc; font-weight:600; font-size: 0.85rem;'> {comedy_output.get('detected_category', 'Tech Satire')}</span>
+                        </div>
+                        <span style='background-color: rgba(34, 197, 94, 0.15); color: #4ADE80; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 8px;'>⚡ Groq Powered</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+                st.markdown(
+                    f"""
+                    <div style="background-color: rgba(255, 255, 255, 0.02); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); margin-bottom: 1rem;">
+                        <span style='color: #38BDF8; font-size: 0.7rem; font-weight:700; text-transform:uppercase;'>📰 Satirical Hook / Onion Headline</span>
+                        <h3 style='color: #f8fafc; font-size: 1.25rem; font-weight:800; line-height: 1.4; margin: 4px 0 0 0;'>"{comedy_output['custom_satirical_headline']}"</h3>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+                r_tab_script, r_tab_song, r_tab_reacts, r_tab_lingo = st.tabs([
+                    "🎬 Silent B-Roll Blueprint",
+                    "🎵 Parody Song",
+                    "🚨 Reaction Hooks",
+                    "💼 Lingo Translation"
+                ])
+                
+                with r_tab_script:
+                    st.markdown(
+                        f"""
+                        <div style="background-color: rgba(99, 102, 241, 0.08); border-left: 5px solid #6366F1; padding: 15px; border-radius: 8px; margin-bottom: 1.5rem;">
+                            <span style="color:#818CF8; font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🪝 Scroll-Stopping Hook (Text on Screen)</span>
+                            <h4 style="margin:5px 0 0 0; color:#f8fafc; font-size:1.15rem; font-weight:800;">"{video_blueprint.get('video_hook', 'Day 1 of pretending to...')}"</h4>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    
+                    st.markdown("<b style='color:#f8fafc; font-size:0.95rem;'>📷 Video Recording Guide (Faceless B-Roll)</b>", unsafe_allow_html=True)
+                    b_roll_clean_v2 = video_blueprint.get('visual_b_roll', '').replace('->', ' ➡️ ')
+                    st.markdown(f"<div style='background-color:#080d16; padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.03); color:#cbd5e1; font-size:0.85rem; margin-bottom:1.5rem;'>{b_roll_clean_v2}</div>", unsafe_allow_html=True)
+                    
+                    st.markdown("<b style='color:#f8fafc; font-size:0.95rem;'>💬 Text Overlays to Place on the Video</b>", unsafe_allow_html=True)
+                    overlay_html = ""
+                    for idx, slide in enumerate(video_blueprint.get('text_overlays', [])):
+                        overlay_html += f"""
+                        <div style='background-color:rgba(255,255,255,0.02); padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); margin-bottom:8px; font-size:0.85rem; color:#f8fafc;'>
+                            <b>Segment {idx+1}:</b> {slide}
+                        </div>
+                        """
+                    st.markdown(overlay_html, unsafe_allow_html=True)
+                    
+                    st.markdown("<b style='color:#f8fafc; font-size:0.95rem;'>🔊 Audio Recommendation (Background Music)</b>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='color:#94a3b8; font-size:0.85rem; margin-top:2px;'>🎵 <i>{video_blueprint.get('bg_music', 'Sarcastic office beats')}</i> (No talking/voiceover needed)</div>", unsafe_allow_html=True)
+                    
+                with r_tab_song:
+                    song_parody = comedy_output['parody_song']
+                    st.markdown(
+                        f"""
+                        <div style="background-color: rgba(236, 72, 153, 0.02); padding: 18px; border-radius: 12px; border: 1px solid rgba(236, 72, 153, 0.1);">
+                            <span style='color: #EC4899; font-size: 0.72rem; font-weight:700; text-transform:uppercase;'>Parody Title:</span>
+                            <h4 style='color: #f8fafc; font-size: 1.15rem; margin: 2px 0 0 0;'>{song_parody.get('title', 'Untitled Parody')}</h4>
+                            <p style='color: #94A3B8; font-size: 0.78rem; margin-top: 2px; margin-bottom: 12px;'>Inspiration: <i>{song_parody.get('original_song', "God's Plan - Drake")}</i></p>
+                            <pre style="background-color: #080d16; padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Courier New', monospace; font-size: 0.85rem; color: #F472B6; line-height: 1.5; white-space: pre-wrap; max-height: 250px; overflow-y: auto;">{song_parody.get('lyrics', '')}</pre>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    
+                with r_tab_reacts:
+                    st.markdown("<b style='color:#f8fafc; font-size:0.9rem;'>🔥 3 Viral Hooks to React & Get Views:</b>", unsafe_allow_html=True)
+                    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+                    
+                    react_html = ""
+                    for hook in comedy_output.get('reaction_hooks', []):
+                        react_html += f"""
+                        <div style="background-color: rgba(56, 189, 248, 0.05); border-left: 4px solid #38BDF8; padding: 12px; border-radius: 0 8px 8px 0; margin-bottom: 10px; color:#cbd5e1; font-size:0.85rem; line-height:1.4;">
+                            {hook}
+                        </div>
+                        """
+                    st.markdown(react_html, unsafe_allow_html=True)
+                    
+                with r_tab_lingo:
+                    st.markdown("<span style='color: #34D399; font-size: 0.72rem; font-weight:700; text-transform:uppercase;'>💼 Corporate Translation Glossary</span>", unsafe_allow_html=True)
+                    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+                    
+                    trans_html = ""
+                    for corp_speak, real_meaning in comedy_output['corporate_lingo']:
+                        trans_html += f"""
+                        <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                            <div style="width: 35%; color: #34D399; font-weight:600; font-size:0.85rem;">"{corp_speak}"</div>
+                            <div style="width: 5%; color: #64748B; text-align:center;">➡️</div>
+                            <div style="width: 60%; color: #CBD5E1; font-size:0.85rem;"><i>{real_meaning}</i></div>
+                        </div>
+                        """
+                    st.markdown(trans_html, unsafe_allow_html=True)
+                    
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("💾 Save Generated Parody Concept to Ideas Board", key="save_gen_parody_btn_v2", use_container_width=True):
+                    ideas = load_ideas()
+                    
+                    b_roll_clean_v3 = video_blueprint.get('visual_b_roll', '').replace('->', ' ➡️ ')
+                    blueprint_md = f"""### 🪝 Hook (Text on Screen)
+"{video_blueprint.get('video_hook', '')}"
+
+### 🔊 BG Music Recommendation
+{video_blueprint.get('bg_music', '')}
+
+### 🎥 Visual B-Roll Guide
+{b_roll_clean_v3}
+
+### 💬 Text Overlays
+""" + "\n".join([f"- {txt}" for txt in video_blueprint.get('text_overlays', [])])
+
+                    new_idea = {
+                        "title": comedy_output['custom_satirical_headline'],
+                        "original_song": comedy_output['parody_song']['original_song'] + " (Parody: " + comedy_output['parody_song']['title'] + ")",
+                        "target_audience": comedy_output.get('detected_category', 'Tech Satire') + f" ({audience_val} Focus)",
+                        "lyrics": comedy_output['parody_song']['lyrics'],
+                        "creator_blueprint": blueprint_md,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
+                    }
+                    ideas.append(new_idea)
+                    save_ideas(ideas)
+                    st.toast("Concept saved to Ideas Board!", icon="💾")
+                    time.sleep(0.3)
+                    st.rerun()
+
+    # --- SUB-TAB 3: CREATOR IDEAS BOARD ---
+    with studio_tab_ideas:
+        st.markdown(
+            """
+            <div style='margin-bottom: 1.5rem;'>
+                <h3 style='color: #f8fafc; font-size: 1.3rem; font-weight:700;'>💡 My Content Ideas Board</h3>
+                <p style='color: #94A3B8; font-size:0.9rem;'>Store your drafts, hooks, parody ideas, and upcoming videos here. Persists locally on disk.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        idea_col1, idea_col2 = st.columns([3, 2])
+        
+        with idea_col2:
+            with st.container(border=True):
+                st.markdown("<h4 style='color:#f8fafc; margin-top:0;'>💡 Jot down a New Idea</h4>", unsafe_allow_html=True)
+                
+                f_title = st.text_input("Content Title / Working Name", key="f_title_val", placeholder="e.g. Git Commit and Cry V2")
+                f_audio = st.text_input("Audio / Song Inspiration", key="f_audio_val", placeholder="e.g. God's Plan - Drake")
+                f_audience = st.text_input("Target Audience", key="f_audience_val", placeholder="e.g. Junior Developers, Remote PMs")
+                f_lyrics = st.text_area("Lyrics / Video Script Draft", key="f_lyrics_val", placeholder="Describe scenes, dialogues, or sing-along lyrics...")
+                f_blueprint = st.text_area("Creator Blueprint / Notes", key="f_blueprint_val", placeholder="Visual notes, angles, captions, hashtags...")
+                
+                if st.button("➕ Save to Board", key="save_manual_idea_btn", use_container_width=True):
+                    if not f_title:
+                        st.error("Please enter a title for your idea.")
+                    else:
+                        ideas = load_ideas()
+                        ideas.append({
+                            "title": f_title,
+                            "original_song": f_audio,
+                            "target_audience": f_audience,
+                            "lyrics": f_lyrics,
+                            "creator_blueprint": f_blueprint,
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
+                        })
+                        save_ideas(ideas)
+                        st.toast("New idea saved!", icon="💡")
+                        time.sleep(0.3)
+                        st.rerun()
+                        
+        with idea_col1:
+            ideas = load_ideas()
+            if not ideas:
+                st.markdown(
+                    """
+                    <div style='padding: 50px; text-align: center; border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px; background: rgba(255,255,255,0.01);'>
+                        <h4 style='color: #64748B;'>No ideas saved yet</h4>
+                        <p style='color: #475569;'>Use the form on the right to add your own concept, or bookmark presets and generated parodies from the other sub-tabs.</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                for idx, idea in enumerate(reversed(ideas)):
+                    actual_idx = len(ideas) - 1 - idx
+                    with st.container(border=True):
+                        st.markdown(
+                            f"""
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="background-color: rgba(56, 189, 248, 0.15); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;">
+                                    🎵 {idea.get('original_song', 'Custom Audio')}
+                                </span>
+                                <span style="color: #64748B; font-size: 0.7rem;">
+                                    🕒 {idea.get('timestamp', 'Recent')}
+                                </span>
+                            </div>
+                            <h3 style="color: #f8fafc; font-size: 1.15rem; font-weight: 700; margin: 4px 0 6px 0;">{idea['title']}</h3>
+                            <p style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 12px;"><b>Audience:</b> {idea.get('target_audience', 'Developers')}</p>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        
+                        if idea.get('lyrics'):
+                            with st.expander("📝 View Script / Lyrics"):
+                                st.markdown(f"<pre style='background:#080d16; padding:12px; border-radius:6px; font-family:monospace; font-size:0.8rem; color:#f8fafc; white-space:pre-wrap;'>{idea['lyrics']}</pre>", unsafe_allow_html=True)
+                                
+                        if idea.get('creator_blueprint'):
+                            with st.expander("🎬 View Blueprint / Notes"):
+                                st.markdown(f"<div style='background:rgba(255,255,255,0.02); padding:10px; border-radius:6px; font-size:0.82rem; color:#cbd5e1; border:1px solid rgba(255,255,255,0.05);'>{idea['creator_blueprint']}</div>", unsafe_allow_html=True)
+                        
+                        del_col, _ = st.columns([1, 3])
+                        with del_col:
+                            if st.button("🗑️ Delete", key=f"del_idea_{actual_idx}", use_container_width=True):
+                                ideas.pop(actual_idx)
+                                save_ideas(ideas)
+                                st.toast("Deleted idea!", icon="🗑️")
+                                time.sleep(0.3)
+                                st.rerun()
+
+# 10. PROBLEM SOLVING TAB
+with tab_problems:
+    st.markdown(
+        """
+        <div style='margin-bottom: 1.5rem;'>
+            <h3 style='color: #f8fafc; font-size: 1.3rem; font-weight:700;'>🧩 Daily Engineering Problem Solving Vault</h3>
+            <p style='color: #94A3B8; font-size:0.9rem;'>Explore curated programming questions (LeetCode in Python) and production bug studies (scaling, concurrency, systems, GenAI) with full source code and root cause analysis.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # 1. Load data
+    prob_data = load_problem_solving()
+    current_date_str = datetime.now().strftime("%Y-%m-%d")
+    
+    # Auto-refresh if the date changes
+    if prob_data.get("last_refreshed") != current_date_str:
+        import random
+        prob_data["last_refreshed"] = current_date_str
+        # Rotate/shuffle the problems pool
+        shuffled = list(prob_data.get("problems", []))
+        random.shuffle(shuffled)
+        prob_data["problems"] = shuffled
+        save_problem_solving(prob_data)
+        st.toast("Daily vault refresh: Shuffled problem list for today!", icon="🔄")
+        
+    # 2. Status & Refresh Trigger bar
+    col_status, col_btn = st.columns([3, 1])
+    with col_status:
+        st.markdown(
+            f"""
+            <div style='padding: 8px 14px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.15); display: inline-block;'>
+                <span style='color: #818CF8; font-size: 0.85rem; font-weight: 600;'>📅 Last Refreshed: {prob_data.get("last_refreshed")}</span>
+                <span style='color: #94A3B8; font-size: 0.85rem; margin-left: 12px;'>| Active Problems: {len(prob_data.get("problems", []))} (Daily Min: 20)</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with col_btn:
+        if st.button("🔄 Trigger Daily Refresh", key="trigger_problem_refresh", use_container_width=True):
+            with st.spinner("Refreshing vault and generating a new study with Groq..."):
+                g_key = st.session_state.get("groq_api_key", DEFAULT_GROQ_KEY)
+                try:
+                    new_problem = generate_new_problem_with_groq(g_key)
+                    if new_problem and isinstance(new_problem, dict) and "title" in new_problem:
+                        prob_list = prob_data.get("problems", [])
+                        titles = [p.get("title") for p in prob_list]
+                        if new_problem["title"] not in titles:
+                            new_problem["id"] = max([p.get("id", 0) for p in prob_list] or [0]) + 1
+                            prob_list.insert(0, new_problem)
+                        
+                        # Cache up to 50 problems
+                        if len(prob_list) > 50:
+                            prob_list = prob_list[:50]
+                            
+                        prob_data["problems"] = prob_list
+                        st.toast("Success! Generated a new problem with Groq AI.", icon="🤖")
+                except Exception as ex:
+                    st.toast(f"AI generation skipped/failed. Shuffling existing set. ({ex})", icon="⚠️")
+                
+                # Shuffle/rotate
+                import random
+                shuffled = list(prob_data.get("problems", []))
+                random.shuffle(shuffled)
+                prob_data["problems"] = shuffled
+                prob_data["last_refreshed"] = current_date_str
+                save_problem_solving(prob_data)
+                time.sleep(0.3)
+                st.rerun()
+                
+    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+    
+    # 3. Filtering
+    filter_col_search, filter_col_cat, filter_col_diff = st.columns([2, 1, 1])
+    with filter_col_search:
+        prob_search = st.text_input("🔍 Search problems, topics, or code keywords...", placeholder="e.g. DP, memory leak, Redis...", key="prob_search_input")
+    with filter_col_cat:
+        prob_cat = st.selectbox("Filter Category", ["All", "LeetCode Python", "Production Scaling & Systems", "Generative AI & LLMs"], key="prob_cat_select")
+    with filter_col_diff:
+        prob_diff = st.selectbox("Filter Difficulty", ["All", "Easy", "Medium", "Hard"], key="prob_diff_select")
+        
+    # Apply Filtering
+    all_problems = prob_data.get("problems", [])
+    filtered_problems = []
+    
+    for p in all_problems:
+        if prob_cat != "All" and p.get("category") != prob_cat:
+            continue
+        if prob_diff != "All" and p.get("difficulty") != prob_diff:
+            continue
+        if prob_search:
+            q = prob_search.lower()
+            text_to_search = (p.get("title", "") + " " + p.get("summary", "") + " " + p.get("problem_description", "") + " " + p.get("solution_code", "") + " " + " ".join(p.get("tags", []))).lower()
+            if q not in text_to_search:
+                continue
+        filtered_problems.append(p)
+        
+    # Render List
+    if not filtered_problems:
+        st.markdown(
+            """
+            <div style='padding: 50px; text-align: center; border: 1px dashed rgba(255,255,255,0.08); border-radius: 18px; background: rgba(255,255,255,0.01);'>
+                <h3 style='color: #64748B;'>No problems found matching filters</h3>
+                <p style='color: #475569;'>Try altering your search text or filter options.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        for idx, p in enumerate(filtered_problems):
+            p_title = p.get("title", "Untitled Problem")
+            p_cat = p.get("category", "Uncategorized")
+            p_diff = p.get("difficulty", "Medium")
+            p_summary = p.get("summary", "")
+            p_desc = p.get("problem_description", "")
+            p_code = p.get("solution_code", "")
+            p_expl = p.get("explanation", "")
+            p_tags = p.get("tags", [])
+            
+            diff_color = "#34D399" if p_diff == "Easy" else ("#F59E0B" if p_diff == "Medium" else "#EF4444")
+            cat_color = "#6366F1" if p_cat == "LeetCode Python" else ("#10B981" if p_cat == "Production Scaling & Systems" else "#EC4899")
+            
+            with st.container(border=True):
+                st.markdown(
+                    f"""
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                        <span style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">{p_title}</span>
+                        <div style="display: flex; gap: 8px;">
+                            <span style="background-color: {cat_color}18; color: {cat_color}; border: 1px solid {cat_color}33; padding: 3px 8px; border-radius: 10px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;">
+                                {p_cat}
+                            </span>
+                            <span style="background-color: {diff_color}18; color: {diff_color}; border: 1px solid {diff_color}33; padding: 3px 8px; border-radius: 10px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;">
+                                {p_diff}
+                            </span>
+                        </div>
+                    </div>
+                    <div style="color: #94A3B8; font-size: 0.85rem; margin-bottom: 12px; font-weight: 500;">{p_summary}</div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+                with st.expander("📖 View Problem Statement / Bug Scenario"):
+                    st.markdown(f"<div style='color: #cbd5e1; font-size: 0.88rem; line-height: 1.5;'>{p_desc}</div>", unsafe_allow_html=True)
+                    
+                with st.expander("💻 View Python Solution / Production Fix"):
+                    st.code(p_code, language="python")
+                    
+                with st.expander("💡 View Deep Explanation & Analysis"):
+                    st.markdown(f"<div style='color: #cbd5e1; font-size: 0.88rem; line-height: 1.5;'>{p_expl}</div>", unsafe_allow_html=True)
+                
+                tag_html = "".join([f"<span style='background: rgba(255,255,255,0.04); color: #94A3B8; padding: 2px 8px; border-radius: 6px; font-size: 0.68rem; margin-right: 6px; font-weight:600;'>#{tag}</span>" for tag in p_tags])
+                st.markdown(
+                    f"""
+                    <div style="margin-top: 10px; display: flex; align-items: center; flex-wrap: wrap;">
+                        <span style="font-size: 0.68rem; color: #475569; font-weight: 700; text-transform: uppercase; margin-right: 8px;">Tags:</span>
+                        {tag_html}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+# 11. SAVED BOOKMARKS TAB
 with tab_saved:
     st.subheader("⭐ Bookmarked Articles")
     
