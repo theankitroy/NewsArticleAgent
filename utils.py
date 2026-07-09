@@ -3,10 +3,11 @@ import os
 import re
 import requests
 from groq import Groq
+import streamlit as st
 
 # File to store user-created parody ideas
 IDEAS_FILE = "creator_ideas.json"
-DEFAULT_GROQ_KEY = "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"
+DEFAULT_GROQ_KEY = st.secrets["GROQ_API_KEY"]
 
 def generate_parody_from_news(title, summary, audience_focus="Global"):
     """
