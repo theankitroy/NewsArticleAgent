@@ -5,10 +5,5 @@ secondaryBackgroundColor = "#151f32"
 textColor = "#f8fafc"
 font = "sans serif"
 
-[server]
-headless = false
-enableCORS = false
-enableXsrfProtection = false
-
 [client]
 toolbarMode = "developer"
