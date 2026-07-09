@@ -2,85 +2,6 @@
     "last_refreshed": "2026-07-09",
     "problems": [
         {
-            "id": 18,
-            "title": "Prompt Token Window Overflow in RAG Pipelines",
-            "category": "Generative AI & LLMs",
-            "difficulty": "Medium",
-            "summary": "Manage chunk context sizes to avoid token limit overflow in Retrieval-Augmented Generation.",
-            "problem_description": "A company RAG (Retrieval-Augmented Generation) chatbot crashed when answering queries about large financial PDFs. The vector database retrieved dozens of text chunks, creating a combined prompt that exceeded the LLM's context window limit (e.g. 8192 tokens), throwing API errors.",
-            "solution_code": "# RAG Prompt Context Limiter with Token Counting (tiktoken)\nimport tiktoken\n\ndef build_safe_rag_prompt(query: str, retrieved_chunks: list[str], max_tokens: int = 6000) -> str:\n    # Use the appropriate tokenizer for the target model (e.g. cl100k_base for gpt-4)\n    encoding = tiktoken.get_encoding(\"cl100k_base\")\n    \n    base_prompt_template = \"Answer the query based on the context below.\\n\\nContext:\\n{context}\\n\\nQuery: {query}\\nAnswer:\"\n    \n    # Calculate base tokens (template structure + query)\n    empty_prompt = base_prompt_template.format(context=\"\", query=query)\n    base_tokens = len(encoding.encode(empty_prompt))\n    \n    available_tokens = max_tokens - base_tokens\n    included_chunks = []\n    current_tokens = 0\n    \n    # Sort chunks by relevance score if available\n    for chunk in retrieved_chunks:\n        chunk_tokens = len(encoding.encode(chunk))\n        if current_tokens + chunk_tokens <= available_tokens:\n            included_chunks.append(chunk)\n            current_tokens += chunk_tokens\n        else:\n            # Stop adding chunks to prevent token overflow\n            break\n            \n    context_str = \"\\n---\\n\".join(included_chunks)\n    return base_prompt_template.format(context=context_str, query=query)",
-            "explanation": "### Token Management in LLMs\n\nLarge Language Models have a strict maximum context window representing the sum of prompt tokens and generated output tokens. In RAG pipelines, naive retrieval can fetch too many long chunks. If unchecked, sending this context to the LLM throws an API error, degrading system availability.\n\n### Resolution Mechanics\n1. **Eager Token Calculation:** Use model-specific tokenizers (like `tiktoken` for OpenAI or `sentencepiece` for Llama) to count exact token lengths of prompt templates and dynamic query structures.\n2. **Truncation & Rank Filtering:** Add retrieved document chunks to the prompt context one by one in order of retrieval relevance, checking the cumulative token count. Stop adding chunks once the safety threshold is reached.",
-            "tags": [
-                "RAG",
-                "LLM",
-                "Generative AI",
-                "Python"
-            ]
-        },
-        {
-            "id": 15,
-            "title": "Kafka Consumer Lag & Rebalance Storm",
-            "category": "Production Scaling & Systems",
-            "difficulty": "Hard",
-            "summary": "Resolve Kafka consumer group dropouts and rebalancing loops under heavy message payloads.",
-            "problem_description": "During peak hours, an order processing system backed by Kafka began falling behind. As lag accumulated, consumers frequently disconnected from the group, triggering continuous partition rebalancing. During rebalancing, message processing stopped entirely, creating a cascading backlog.",
-            "solution_code": "# Python Kafka Consumer (Confluent-Kafka) Optimization Settings\n# Preventing rebalance storms by adjusting processing intervals and heartbeat limits.\n\nfrom confluent_kafka import Consumer\n\nconf = {\n    'bootstrap.servers': \"kafka-broker-1:9092\",\n    'group.id': \"order-processors\",\n    'auto.offset.reset': 'earliest',\n    'enable.auto.commit': False,  # Manual commits to ensure processing completeness\n    \n    # --- OPTIMIZED REBALANCE CONFIG ---\n    'session.timeout.ms': 45000,      # Max time to miss heartbeats before eviction (45s)\n    'heartbeat.interval.ms': 15000,   # Send heartbeats every 15s (1/3 of session timeout)\n    'max.poll.interval.ms': 300000,   # Allow up to 5 minutes to process a single batch\n    'max.partition.fetch.bytes': 1048576, # Limit batch size in bytes (1MB) to process quickly\n}\n\nconsumer = Consumer(conf)\nconsumer.subscribe(['orders'])",
-            "explanation": "### Rebalance Storm Anatomy\n\nKafka consumers send periodic heartbeats to the broker to prove they are alive. They also poll for new messages in a loop. If a consumer takes too long to process a fetched batch of messages (exceeding `max.poll.interval.ms`), the broker assumes the consumer has hung or died. The broker evicts the consumer and triggers a partition rebalance. The evicted consumer then finishes its batch, tries to rejoin, triggers *another* rebalance, and the group gets stuck in a perpetual 'rebalance storm' where no work is completed.\n\n### Optimization Guide\n1. **Increase Poll Interval:** Set `max.poll.interval.ms` to a value comfortably larger than the worst-case processing time for a single batch.\n2. **Limit Batch Sizes:** Lower the number of records returned in a single poll using settings like `max.poll.records` or `max.partition.fetch.bytes` so processing finishes quickly.\n3. **Decouple Fetch and Process:** Implement a queue-based consumer where the Kafka thread only polls and pushes to an in-memory thread pool for processing.",
-            "tags": [
-                "Kafka",
-                "System Design",
-                "Message Queues",
-                "Scaling"
-            ]
-        },
-        {
-            "id": 3,
-            "title": "LeetCode 146: LRU Cache Design",
-            "category": "LeetCode Python",
-            "difficulty": "Medium",
-            "summary": "Design a Least Recently Used (LRU) Cache using double linked lists.",
-            "problem_description": "Design a data structure that follows the constraints of a Least Recently Used (LRU) cache.\nImplement the `LRUCache` class:\n- `LRUCache(capacity)` Initialize the LRU cache with positive size capacity.\n- `get(key)` Return the value of the key if it exists, otherwise return -1.\n- `put(key, value)` Update the value of the key if it exists. Otherwise, add the key-value pair. If number of keys exceeds capacity, evict the least recently used key.",
-            "solution_code": "class Node:\n    def __init__(self, key=0, value=0):\n        self.key = key\n        self.value = value\n        self.prev = None\n        self.next = None\n\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.cache = {}  # Map: key -> Node\n        \n        # Dummy head and tail to simplify list manipulation\n        self.head = Node()\n        self.tail = Node()\n        self.head.next = self.tail\n        self.tail.prev = self.head\n\n    def _remove(self, node: Node):\n        # Remove node from double linked list\n        prev_node = node.prev\n        next_node = node.next\n        prev_node.next = next_node\n        next_node.prev = prev_node\n\n    def _add_to_head(self, node: Node):\n        # Insert node immediately after dummy head (most recently used)\n        node.next = self.head.next\n        node.prev = self.head\n        self.head.next.prev = node\n        self.head.next = node\n\n    def get(self, key: int) -> int:\n        if key in self.cache:\n            node = self.cache[key]\n            self._remove(node)\n            self._add_to_head(node)  # Mark as recently used\n            return node.value\n        return -1\n\n    def put(self, key: int, value: int) -> None:\n        if key in self.cache:\n            node = self.cache[key]\n            node.value = value\n            self._remove(node)\n            self._add_to_head(node)\n        else:\n            if len(self.cache) >= self.capacity:\n                # Evict LRU from tail\n                lru_node = self.tail.prev\n                self._remove(lru_node)\n                del self.cache[lru_node.key]\n                \n            new_node = Node(key, value)\n            self.cache[key] = new_node\n            self._add_to_head(new_node)",
-            "explanation": "### Cache Mechanics\n\n- **Get / Put Time:** $O(1)$ constant time complexity.\n- **Space Complexity:** $O(c)$ where $c$ is the capacity of the cache, storing nodes and keys.\n\n### Implementation Insights\nTo achieve $O(1)$ lookup, we need a hash map. To achieve $O(1)$ eviction order adjustment, we need a doubly linked list. By linking them together, the hash map maps keys to nodes in the doubly linked list, enabling us to instantly jump to any node, remove it, and append it to the front (representing Most Recently Used) when accessed.",
-            "tags": [
-                "Design",
-                "Hash Table",
-                "Doubly Linked List",
-                "Medium"
-            ]
-        },
-        {
-            "id": 8,
-            "title": "LeetCode 121: Best Time to Buy and Sell Stock",
-            "category": "LeetCode Python",
-            "difficulty": "Easy",
-            "summary": "Find maximum profit from buying and selling a stock once.",
-            "problem_description": "You are given an array `prices` where `prices[i]` is the price of a given stock on the $i$-th day.\nYou want to maximize your profit by choosing a single day to buy one stock and choosing a different day in the future to sell that stock.\nReturn the maximum profit you can achieve. If you cannot achieve any profit, return `0`.",
-            "solution_code": "def maxProfit(prices: list[int]) -> int:\n    if not prices:\n        return 0\n        \n    min_price = float('inf')\n    max_profit = 0\n    \n    for price in prices:\n        # Keep track of minimum buy price seen so far\n        if price < min_price:\n            min_price = price\n        # Calculate profit if sold today and update max profit\n        elif price - min_price > max_profit:\n            max_profit = price - min_price\n            \n    return max_profit",
-            "explanation": "### One-pass Greedy Approach\n\n- **Time Complexity:** $O(n)$ single pass scan.\n- **Space Complexity:** $O(1)$ constant space.\n\n### Explanation\nInstead of a nested loop checking every day against every future day ($O(n^2)$), we maintain a running `min_price` of the stock. As we scan the list, we compute the hypothetical profit we would make if we sold today: $price - min\\_price$. We save the maximum value encountered.",
-            "tags": [
-                "Array",
-                "Dynamic Programming",
-                "Easy"
-            ]
-        },
-        {
-            "id": 4,
-            "title": "LeetCode 200: Number of Islands",
-            "category": "LeetCode Python",
-            "difficulty": "Medium",
-            "summary": "Count the number of separate islands in a 2D binary grid.",
-            "problem_description": "Given an `m x n` 2D binary grid `grid` which represents a map of `'1'`s (land) and `'0'`s (water), return the number of islands.\nAn island is surrounded by water and is formed by connecting adjacent lands horizontally or vertically. You may assume all four edges of the grid are all surrounded by water.",
-            "solution_code": "def numIslands(grid: list[list[str]]) -> int:\n    if not grid:\n        return 0\n        \n    rows, cols = len(grid), len(grid[0])\n    island_count = 0\n    \n    def dfs(r, c):\n        # Base case: boundary check or water cell\n        if r < 0 or r >= rows or c < 0 or c >= cols or grid[r][c] == '0':\n            return\n            \n        # Mark cell as visited by sinking it to '0'\n        grid[r][c] = '0'\n        \n        # Traverse in 4 directions\n        dfs(r + 1, c)\n        dfs(r - 1, c)\n        dfs(r, c + 1)\n        dfs(r, c - 1)\n\n    for r in range(rows):\n        for c in range(cols):\n            if grid[r][c] == '1':\n                island_count += 1\n                dfs(r, c)  # Visit all connected land\n                \n    return island_count",
-            "explanation": "### Graph Traversal (DFS/BFS)\n\n- **Time Complexity:** $O(M \\times N)$ where $M$ is the number of rows and $N$ is the number of columns. Every element in the grid is visited at most once.\n- **Space Complexity:** $O(M \\times N)$ worst case stack space if the entire grid is one island.\n\n### Explanation\nWe iterate through the grid. When we find a `'1'` (land), we increment our island counter and run a Depth First Search (DFS) to find all horizontally and vertically adjacent land cells, sinking them to `'0'` so they won't be counted again. The number of times we initiate a DFS is the total number of islands.",
-            "tags": [
-                "Graph",
-                "DFS",
-                "Matrix",
-                "Medium"
-            ]
-        },
-        {
             "id": 11,
             "title": "PostgreSQL Connection Pool Exhaustion under Spikes",
             "category": "Production Scaling & Systems",
@@ -94,131 +15,6 @@
                 "PostgreSQL",
                 "PgBouncer",
                 "System Design"
-            ]
-        },
-        {
-            "id": 2,
-            "title": "LeetCode 3: Longest Substring Without Repeating Characters",
-            "category": "LeetCode Python",
-            "difficulty": "Medium",
-            "summary": "Find the length of the longest substring without repeating characters.",
-            "problem_description": "Given a string `s`, find the length of the longest substring without repeating characters.\n\n**Example:**\nInput: `s = \"abcabcbb\"`\nOutput: `3` (The substring is `\"abc\"`)",
-            "solution_code": "def lengthOfLongestSubstring(s: str) -> int:\n    char_map = {}  # Stores char -> its last seen index\n    max_length = 0\n    start = 0      # Left boundary of the sliding window\n    \n    for end, char in enumerate(s):\n        # If char was seen and is within our current window\n        if char in char_map and char_map[char] >= start:\n            # Shrink/slide window past the previous occurrence\n            start = char_map[char] + 1\n            \n        char_map[char] = end\n        max_length = max(max_length, end - start + 1)\n        \n    return max_length",
-            "explanation": "### Sliding Window Technique\n\n- **Time Complexity:** $O(n)$ where $n$ is the length of the string. The right pointer `end` scans through the string once.\n- **Space Complexity:** $O(min(a, m))$ where $a$ is the alphabet size and $m$ is string length. In the worst case, we store the position of all unique characters.\n\n### Detailed Breakdown\nWe maintain a sliding window `[start, end]`. As we move the `end` pointer to the right, we check if the current character has been seen. If it has been seen, and its index is greater than or equal to `start`, we slide `start` directly to `last_seen_index + 1`. This avoids redundant inner loops, completing the search in a single pass.",
-            "tags": [
-                "String",
-                "Sliding Window",
-                "Medium"
-            ]
-        },
-        {
-            "id": 5,
-            "title": "LeetCode 23: Merge k Sorted Lists",
-            "category": "LeetCode Python",
-            "difficulty": "Hard",
-            "summary": "Merge k sorted linked lists in O(N log k) time.",
-            "problem_description": "You are given an array of `k` linked-lists `lists`, each linked-list is sorted in ascending order.\nMerge all the linked-lists into one sorted linked-list and return it.\n\n**Example:**\nInput: `lists = [[1,4,5],[1,3,4],[2,6]]`\nOutput: `[1,1,2,3,4,4,5,6]`",
-            "solution_code": "import heapq\n\nclass ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n        \n    # Python 3 compatibility for priority queue comparison\n    def __lt__(self, other):\n        return self.val < other.val\n\ndef mergeKLists(lists: list[ListNode]) -> ListNode:\n    min_heap = []\n    \n    # Push the head node of each non-empty list into the heap\n    for idx, lst_head in enumerate(lists):\n        if lst_head:\n            # Storing (node.val, index, node) to ensure uniqueness\n            heapq.heappush(min_heap, (lst_head.val, idx, lst_head))\n            \n    dummy = ListNode(0)\n    curr = dummy\n    \n    while min_heap:\n        val, idx, node = heapq.heappop(min_heap)\n        curr.next = node\n        curr = curr.next\n        \n        # If there is a next node, push it to heap\n        if node.next:\n            heapq.heappush(min_heap, (node.next.val, idx, node.next))\n            \n    return dummy.next",
-            "explanation": "### Priority Queue (Min-Heap)\n\n- **Time Complexity:** $O(N \\log k)$ where $N$ is the total number of nodes in all lists, and $k$ is the number of linked lists. Inserting and extracting from the heap costs $O(\\log k)$.\n- **Space Complexity:** $O(k)$ auxiliary space for the min-heap containing at most one node from each of the $k$ lists.\n\n### Explanation\nInstead of checking every list head on each step (which would take $O(N \\cdot k)$), we use a min-heap to keep track of the smallest node values across the $k$ list heads. We pop the smallest node from the heap, append it to our merged list, and push its next sibling back into the heap.",
-            "tags": [
-                "Linked List",
-                "Divide and Conquer",
-                "Heap (Priority Queue)",
-                "Hard"
-            ]
-        },
-        {
-            "id": 16,
-            "title": "Distributed Lock Timeout (Redis Split-Brain)",
-            "category": "Production Bugs & Debugging",
-            "difficulty": "Medium",
-            "summary": "Fix race conditions in distributed systems caused by expired Redis lock leases.",
-            "problem_description": "An inventory system used Redis to lock items during checkout to prevent double-booking. Under high CPU load, checkout requests took longer than the 5-second Redis lock TTL. The lock expired, another worker acquired the lock, and the same inventory item was double-sold.",
-            "solution_code": "# Secure Distributed Lock with Redlock and Auto-Renewal (Watchdog pattern)\nimport redis\nimport time\nimport uuid\nimport threading\n\nclass RedisDistributedLock:\n    def __init__(self, redis_client, lock_key):\n        self.r = redis_client\n        self.key = lock_key\n        self.value = str(uuid.uuid4())\n        self.running = False\n\n    def acquire(self, ttl_ms=5000):\n        # Set lock only if it doesn't exist (NX) with expiry (PX)\n        success = self.r.set(self.key, self.value, nx=True, px=ttl_ms)\n        if success:\n            self.running = True\n            # Spawn a background watchdog thread to renew lock lease\n            self.watchdog = threading.Thread(target=self._run_watchdog, args=(ttl_ms,))\n            self.watchdog.daemon = True\n            self.watchdog.start()\n            return True\n        return False\n\n    def _run_watchdog(self, ttl_ms):\n        renew_interval = (ttl_ms / 1000.0) / 3.0\n        while self.running:\n            time.sleep(renew_interval)\n            # Lua Script: Atomically renew lock if value matches\n            lua_renew = \"\"\"\n            if redis.call(\"get\", KEYS[1]) == ARGV[1] then\n                return redis.call(\"pexpire\", KEYS[1], ARGV[2])\n            else:\n                return 0\n            end\n            \"\"\"\n            self.r.eval(lua_renew, 1, self.key, self.value, ttl_ms)\n\n    def release(self):\n        self.running = False\n        # Lua Script: Atomically release lock only if value matches (prevents releasing others' locks)\n        lua_release = \"\"\"\n        if redis.call(\"get\", KEYS[1]) == ARGV[1] then\n            return redis.call(\"del\", KEYS[1])\n        else:\n            return 0\n        end\n        \"\"\"\n        self.r.eval(lua_release, 1, self.key, self.value)",
-            "explanation": "### The Split-Brain Race Condition\n\nIf Client A acquires a distributed lock with a lease time of $5$ seconds, but experiences a stop-the-world garbage collection pause or database stall for $6$ seconds, Redis automatically releases the lock. Client B acquires the lock. Client A resumes and completes its write, believing it still holds the lock. Both clients now execute in the critical section simultaneously, corrupting data.\n\n### The Fix: Watchdog and Atomic Releases\n1. **Lock Watchdog:** Spawn a background thread/task to periodically renew the lock lease (extend TTL) as long as the main processing thread is still actively working.\n2. **Atomic Releases:** Always release locks using a Lua script that checks if the lock value still matches the unique client ID. This prevents Client A from mistakenly releasing a lock currently held by Client B.",
-            "tags": [
-                "Redis",
-                "Distributed Systems",
-                "Concurrency",
-                "Medium"
-            ]
-        },
-        {
-            "id": 17,
-            "title": "FastAPI ThreadPool Starvation",
-            "category": "Production Bugs & Debugging",
-            "difficulty": "Medium",
-            "summary": "Resolve API stalling in async frameworks caused by blocking synchronous calls.",
-            "problem_description": "A high-performance FastAPI service crashed when under load. One endpoint performed a heavy image analysis using a synchronous OpenCV library. During analysis, other lightweight endpoints (like health checks) stopped responding entirely, leading to health check failures and orchestrator restarts.",
-            "solution_code": "# FastAPI Async vs Sync thread allocation fix\nimport asyncio\nfrom fastapi import FastAPI\nimport time\n\napp = FastAPI()\n\ndef heavy_blocking_cpu_bound_operation():\n    # Simulated OpenCV image processing\n    time.sleep(2)\n    return \"processed_image_metadata\"\n\n# --- BUGGY APPROACH (Blocks the single-threaded Event Loop) ---\n@app.get(\"/process-buggy\")\nasync def process_buggy():\n    # Crucial Mistake: Running blocking synchronous code inside 'async def'.\n    # This blocks the single asyncio thread, freezing the entire API server.\n    data = heavy_blocking_cpu_bound_operation()\n    return {\"status\": \"done\", \"data\": data}\n\n# --- OPTION 1: Use normal 'def' (FastAPI automatically runs in ThreadPool) ---\n@app.get(\"/process-option1\")\ndef process_option1():\n    # FastAPI runs normal 'def' endpoints in an external thread pool automatically.\n    data = heavy_blocking_cpu_bound_operation()\n    return {\"status\": \"done\", \"data\": data}\n\n# --- OPTION 2: Run in asyncio executor (Explicit async control) ---\n@app.get(\"/process-option2\")\nasync def process_option2():\n    loop = asyncio.get_running_loop()\n    # Offload the blocking operation to a default thread pool executor\n    data = await loop.run_in_executor(None, heavy_blocking_cpu_bound_operation)\n    return {\"status\": \"done\", \"data\": data}",
-            "explanation": "### Event Loop Blockage\n\nFastAPI is built on `asyncio` which runs on a **single thread**. When you declare an endpoint with `async def`, the event loop expects the code inside to yield control using `await`. If you run blocking synchronous code (like file I/O, heavy computation, or blocking libraries like requests/OpenCV) inside an `async def`, the single thread of the event loop is entirely blocked. No other request can be handled during this time.\n\n### Threading Guidelines in FastAPI\n- If your endpoint uses blocking libraries: Declare it with regular `def`. FastAPI runs it in a separate thread pool so the async event loop stays free.\n- If your endpoint is fully asynchronous: Declare it with `async def` and use await on all I/O.",
-            "tags": [
-                "FastAPI",
-                "Python",
-                "Concurrency",
-                "Medium"
-            ]
-        },
-        {
-            "id": 7,
-            "title": "LeetCode 56: Merge Intervals",
-            "category": "LeetCode Python",
-            "difficulty": "Medium",
-            "summary": "Merge overlapping intervals in a collection.",
-            "problem_description": "Given an array of `intervals` where `intervals[i] = [start_i, end_i]`, merge all overlapping intervals, and return an array of the non-overlapping intervals that cover all the intervals in the input.",
-            "solution_code": "def merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    if not intervals:\n        return []\n        \n    # Sort intervals by their start time\n    intervals.sort(key=lambda x: x[0])\n    merged = [intervals[0]]\n    \n    for current in intervals[1:]:\n        prev_start, prev_end = merged[-1]\n        curr_start, curr_end = current\n        \n        # If current interval overlaps with previous merged interval\n        if curr_start <= prev_end:\n            # Merge them by expanding the end time of previous interval\n            merged[-1][1] = max(prev_end, curr_end)\n        else:\n            # No overlap, append current interval\n            merged.append(current)\n            \n    return merged",
-            "explanation": "### Greedy Algorithm with Sorting\n\n- **Time Complexity:** $O(n \\log n)$ due to sorting. The linear scan takes $O(n)$ time.\n- **Space Complexity:** $O(\\log n)$ or $O(n)$ space depending on the sorting implementation.\n\n### Explanation\nBy sorting intervals by their starting times, overlapping intervals are placed adjacent to each other. We can then iterate through the list, checking if the current interval starts before the last merged interval ends. If so, we merge them; otherwise, we start a new interval.",
-            "tags": [
-                "Array",
-                "Sorting",
-                "Medium"
-            ]
-        },
-        {
-            "id": 1,
-            "title": "LeetCode 1: Two Sum",
-            "category": "LeetCode Python",
-            "difficulty": "Easy",
-            "summary": "Find two numbers in an array that add up to a specific target.",
-            "problem_description": "Given an array of integers `nums` and an integer `target`, return indices of the two numbers such that they add up to `target`.\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.\nYou can return the answer in any order.",
-            "solution_code": "def twoSum(nums: list[int], target: int) -> list[int]:\n    # Use a hash map to store value -> index mapping\n    num_map = {}\n    \n    for index, value in enumerate(nums):\n        complement = target - value\n        # If the complement exists in the map, we found the pair\n        if complement in num_map:\n            return [num_map[complement], index]\n        # Otherwise, store the index of the current value\n        num_map[value] = index\n        \n    return []  # Fallback (though constraint guarantees a solution)",
-            "explanation": "### Algorithm Analysis\n\n- **Time Complexity:** $O(n)$ where $n$ is the number of elements in the array. We traverse the list containing $n$ elements exactly once. Each lookup in the hash table costs only $O(1)$ time.\n- **Space Complexity:** $O(n)$ to store the key-value pairs in the dictionary/hash map, which stores at most $n$ elements.\n\n### Explanation\nInstead of checking all pairs using a nested loop ($O(n^2)$), we can look for the 'complement' ($target - nums[i]$) of the current number. By storing visited elements in a dictionary, we can check if the complement exists in constant $O(1)$ time.",
-            "tags": [
-                "Array",
-                "Hash Table",
-                "Easy"
-            ]
-        },
-        {
-            "id": 12,
-            "title": "Redis Cache Stampede (Thundering Herd)",
-            "category": "Production Scaling & Systems",
-            "difficulty": "Hard",
-            "summary": "Implement XFetch/Probabilistic Early Expiration to solve cache stampedes on hot keys.",
-            "problem_description": "A high-traffic homepage cached a hot config key (`global_navigation_menu`) in Redis with a 1-hour TTL. When the key expired, 50,000 concurrent requests found a cache miss simultaneously. They all queried the primary SQL database to rebuild the cache, causing a CPU spike to 100% on the database, locking tables, and triggering a total system outage.",
-            "solution_code": "import time\nimport math\nimport random\n\n# Cache Client implementing Probabilistic Early Expiration (XFetch algorithm)\nclass CacheClient:\n    def __init__(self, redis_client, db_client):\n        self.redis = redis_client\n        self.db = db_client\n\n    def xfetch(self, key, ttl_seconds, beta=1.0):\n        # Retrieve value and delta (computation time to fetch from DB)\n        # Redis stores value as JSON containing: {\"data\": data, \"delta\": delta, \"ttl\": ttl}\n        cached = self.redis.get_json(key)\n        \n        if not cached:\n            return self._rebuild_and_cache(key, ttl_seconds)\n            \n        value = cached[\"data\"]\n        delta = cached[\"delta\"]   # Time in seconds taken to read from DB last time\n        expiration = cached[\"expiration\"] # Epoch timestamp of expiration\n        \n        # Probabilistic Early Expiration calculation\n        # formula: time() - (delta * beta * ln(rand())) > expiration\n        # If true, one of the concurrent clients will proactively rebuild the cache BEFORE it expires.\n        if (time.time() - (delta * beta * math.log(random.random()))) > expiration:\n            # Rebuild cache asynchronously or inline (safely locks or replaces value)\n            return self._rebuild_and_cache(key, ttl_seconds)\n            \n        return value\n\n    def _rebuild_and_cache(self, key, ttl):\n        start_time = time.time()\n        # Fetch from SQL DB\n        data = self.db.query_navigation_menu()\n        delta = time.time() - start_time\n        \n        expiration = time.time() + ttl\n        payload = {\n            \"data\": data,\n            \"delta\": delta,\n            \"expiration\": expiration\n        }\n        self.redis.set_json(key, payload, ex=ttl + 300) # Keep in Redis slightly longer than logical expiration\n        return data",
-            "explanation": "### Cache Stampede Mechanics\n\nWhen a high-traffic cache key expires, the cache goes from $100\\%$ hit rate to $0\\%$ for that key. If the rebuild time (fetching from SQL, formatting JSON) takes $200\\text{ms}$ and traffic is $10,000\\text{ req/sec}$, then $2,000$ database queries are triggered concurrently before the first query can write the value back to the cache.\n\n### The XFetch Solution\nInstead of waiting for the key to expire, we use a probabilistic algorithm (XFetch, developed by Vattani et al.) to expire the key early for a *single* random request as the expiration time approaches. The probability of early expiration increases as the key gets closer to its TTL and is proportional to the database query duration. Only one user experience incurs the database write, seamlessly rebuilding the cache in background.",
-            "tags": [
-                "Caching",
-                "Redis",
-                "High Traffic",
-                "System Design"
-            ]
-        },
-        {
-            "id": 13,
-            "title": "Memory Leak in Python Asynchronous Event Loop",
-            "category": "Production Bugs & Debugging",
-            "difficulty": "Hard",
-            "summary": "Fix unbounded memory growth in asyncio WebSockets caused by unawaited tasks and global references.",
-            "problem_description": "A Python asyncio WebSocket server processing IoT sensor telemetry experienced linear memory leaks, growing from 150MB to 8GB over 48 hours and triggering Linux Out-Of-Memory (OOM) killer terminations. Heap analysis showed millions of uncollected `Task` and `Future` objects.",
-            "solution_code": "# Buggy code vs Fixed code in asyncio Task creation\nimport asyncio\n\nclass TelemetryServer:\n    def __init__(self):\n        self.active_tasks = set() # Store strong references to running background tasks\n\n    # --- BUGGY IMPLEMENTATION ---\n    async def handle_client_buggy(self, websocket):\n        async for message in websocket:\n            # Memory Leak: Loop creates an unawaited task for each message.\n            # Python's asyncio garbage collection fails to reclaim completed tasks\n            # if they are not properly referenced and cleared, or if global events register them.\n            asyncio.create_task(self.process_telemetry(message))\n\n    # --- FIXED IMPLEMENTATION ---\n    async def handle_client_fixed(self, websocket):\n        async for message in websocket:\n            task = asyncio.create_task(self.process_telemetry(message))\n            \n            # 1. Keep a strong reference to prevent garbage collection while running\n            self.active_tasks.add(task)\n            \n            # 2. Add callback to remove task from set upon completion\n            task.add_done_callback(self.active_tasks.discard)\n\n    async def process_telemetry(self, data):\n        # Simulate processing IO/DB write\n        await asyncio.sleep(0.1)\n        # Processed!",
-            "explanation": "### Root Cause Analysis\n\nIn Python's `asyncio`, tasks spawned via `asyncio.create_task` are scheduled on the event loop. If they are not awaited and no reference is kept, the loop retains a reference in its internal scheduling queue. Under high throughput, if tasks block on slow external I/O (like database writes), they stack up. Furthermore, if references to these tasks are kept in callback cycles or global event managers, they can never be garbage collected, resulting in a severe memory leak.\n\n### Debugging & Resolution Steps\n1. **Use `tracemalloc`:** Run `tracemalloc` to capture memory snapshots and identify which objects (specifically `asyncio.Task`) are growing.\n2. **Task Reference Management:** Maintain a `set` of active tasks and use `task.add_done_callback(active_tasks.discard)` to remove them immediately upon completion.\n3. **Structured Concurrency:** Use `asyncio.TaskGroup` (available in Python 3.11+) or `asyncio.gather` with limits to control execution scope.",
-            "tags": [
-                "Python",
-                "Asyncio",
-                "Memory Leak",
-                "WebSockets"
             ]
         },
         {
@@ -239,19 +35,34 @@
             ]
         },
         {
-            "id": 14,
-            "title": "N+1 Query Latency in SQLAlchemy ORM",
+            "id": 7,
+            "title": "LeetCode 56: Merge Intervals",
+            "category": "LeetCode Python",
+            "difficulty": "Medium",
+            "summary": "Merge overlapping intervals in a collection.",
+            "problem_description": "Given an array of `intervals` where `intervals[i] = [start_i, end_i]`, merge all overlapping intervals, and return an array of the non-overlapping intervals that cover all the intervals in the input.",
+            "solution_code": "def merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    if not intervals:\n        return []\n        \n    # Sort intervals by their start time\n    intervals.sort(key=lambda x: x[0])\n    merged = [intervals[0]]\n    \n    for current in intervals[1:]:\n        prev_start, prev_end = merged[-1]\n        curr_start, curr_end = current\n        \n        # If current interval overlaps with previous merged interval\n        if curr_start <= prev_end:\n            # Merge them by expanding the end time of previous interval\n            merged[-1][1] = max(prev_end, curr_end)\n        else:\n            # No overlap, append current interval\n            merged.append(current)\n            \n    return merged",
+            "explanation": "### Greedy Algorithm with Sorting\n\n- **Time Complexity:** $O(n \\log n)$ due to sorting. The linear scan takes $O(n)$ time.\n- **Space Complexity:** $O(\\log n)$ or $O(n)$ space depending on the sorting implementation.\n\n### Explanation\nBy sorting intervals by their starting times, overlapping intervals are placed adjacent to each other. We can then iterate through the list, checking if the current interval starts before the last merged interval ends. If so, we merge them; otherwise, we start a new interval.",
+            "tags": [
+                "Array",
+                "Sorting",
+                "Medium"
+            ]
+        },
+        {
+            "id": 16,
+            "title": "Distributed Lock Timeout (Redis Split-Brain)",
             "category": "Production Bugs & Debugging",
             "difficulty": "Medium",
-            "summary": "Identify and resolve SQL query explosion caused by lazy loading in ORM relationships.",
-            "problem_description": "An API endpoint fetching a list of 100 blog posts along with their authors took 3.2 seconds to resolve, executing 101 separate SQL queries. The ORM was lazy-loading the `Author` relationship for each post in a loop.",
-            "solution_code": "# SQLAlchemy Models and Eager Loading Fixes\n\nfrom sqlalchemy import Column, Integer, String, ForeignKey\nfrom sqlalchemy.orm import relationship, declarative_base, joinedload, selectinload\nfrom sqlalchemy.future import select\n\nBase = declarative_base()\n\nclass User(Base):\n    __tablename__ = 'users'\n    id = Column(Integer, primary_key=True)\n    name = Column(String)\n\nclass Post(Base):\n    __tablename__ = 'posts'\n    id = Column(Integer, primary_key=True)\n    title = Column(String)\n    user_id = Column(Integer, ForeignKey('users.id'))\n    author = relationship(\"User\")\n\n# --- BUGGY LAZY-LOADING CODE (Executes 1 + N queries) ---\n# select(Post) -> fetches 100 posts\n# For each post, accessing post.author.name executes: SELECT * FROM users WHERE id = ?\nasync def get_posts_buggy(session):\n    result = await session.execute(select(Post))\n    posts = result.scalars().all()\n    return [{\"title\": p.title, \"author\": p.author.name} for p in posts]\n\n# --- FIXED EAGER-LOADING CODE (Executes exactly 1 JOIN query) ---\n# Using joinedload tells SQLAlchemy to fetch the related User table using a SQL JOIN.\nasync def get_posts_fixed(session):\n    stmt = select(Post).options(joinedload(Post.author))\n    result = await session.execute(stmt)\n    posts = result.scalars().all()\n    return [{\"title\": p.title, \"author\": p.author.name} for p in posts]",
-            "explanation": "### N+1 Query Dynamics\n\nThe N+1 query problem occurs when an application loads a collection of $N$ items from a database, and then loops through each item to load a related item (e.g., $N$ details). This results in $1$ query to fetch the list, followed by $N$ separate queries to fetch the child objects, leading to high database latency due to network roundtrips.\n\n### Eager Loading Types\n- **Joined Load (`joinedload`):** Performs a `LEFT OUTER JOIN` in the initial SQL statement. Best for Many-to-One relationships.\n- **Select In Load (`selectinload`):** Emits a second query using the `IN` operator (e.g. `SELECT * FROM users WHERE id IN (1, 2, 3...)`). Best for One-to-Many collections, preventing huge cartesian product tables.",
+            "summary": "Fix race conditions in distributed systems caused by expired Redis lock leases.",
+            "problem_description": "An inventory system used Redis to lock items during checkout to prevent double-booking. Under high CPU load, checkout requests took longer than the 5-second Redis lock TTL. The lock expired, another worker acquired the lock, and the same inventory item was double-sold.",
+            "solution_code": "# Secure Distributed Lock with Redlock and Auto-Renewal (Watchdog pattern)\nimport redis\nimport time\nimport uuid\nimport threading\n\nclass RedisDistributedLock:\n    def __init__(self, redis_client, lock_key):\n        self.r = redis_client\n        self.key = lock_key\n        self.value = str(uuid.uuid4())\n        self.running = False\n\n    def acquire(self, ttl_ms=5000):\n        # Set lock only if it doesn't exist (NX) with expiry (PX)\n        success = self.r.set(self.key, self.value, nx=True, px=ttl_ms)\n        if success:\n            self.running = True\n            # Spawn a background watchdog thread to renew lock lease\n            self.watchdog = threading.Thread(target=self._run_watchdog, args=(ttl_ms,))\n            self.watchdog.daemon = True\n            self.watchdog.start()\n            return True\n        return False\n\n    def _run_watchdog(self, ttl_ms):\n        renew_interval = (ttl_ms / 1000.0) / 3.0\n        while self.running:\n            time.sleep(renew_interval)\n            # Lua Script: Atomically renew lock if value matches\n            lua_renew = \"\"\"\n            if redis.call(\"get\", KEYS[1]) == ARGV[1] then\n                return redis.call(\"pexpire\", KEYS[1], ARGV[2])\n            else:\n                return 0\n            end\n            \"\"\"\n            self.r.eval(lua_renew, 1, self.key, self.value, ttl_ms)\n\n    def release(self):\n        self.running = False\n        # Lua Script: Atomically release lock only if value matches (prevents releasing others' locks)\n        lua_release = \"\"\"\n        if redis.call(\"get\", KEYS[1]) == ARGV[1] then\n            return redis.call(\"del\", KEYS[1])\n        else:\n            return 0\n        end\n        \"\"\"\n        self.r.eval(lua_release, 1, self.key, self.value)",
+            "explanation": "### The Split-Brain Race Condition\n\nIf Client A acquires a distributed lock with a lease time of $5$ seconds, but experiences a stop-the-world garbage collection pause or database stall for $6$ seconds, Redis automatically releases the lock. Client B acquires the lock. Client A resumes and completes its write, believing it still holds the lock. Both clients now execute in the critical section simultaneously, corrupting data.\n\n### The Fix: Watchdog and Atomic Releases\n1. **Lock Watchdog:** Spawn a background thread/task to periodically renew the lock lease (extend TTL) as long as the main processing thread is still actively working.\n2. **Atomic Releases:** Always release locks using a Lua script that checks if the lock value still matches the unique client ID. This prevents Client A from mistakenly releasing a lock currently held by Client B.",
             "tags": [
-                "Database",
-                "SQLAlchemy",
-                "Python",
-                "ORM"
+                "Redis",
+                "Distributed Systems",
+                "Concurrency",
+                "Medium"
             ]
         },
         {
@@ -271,34 +82,65 @@
             ]
         },
         {
-            "title": "Production Bug: Caching Stampede in High-Concurrency Web Service",
-            "category": "Production Scaling & Systems",
-            "difficulty": "Hard",
-            "summary": "Prevent caching stampedes by employing a distributed locking mechanism to synchronize access to shared cache resources in multi-threaded/high-concurrency web services using Redis",
-            "problem_description": "A high-concurrency web service utilizing Redis as a caching layer is experiencing an issue where multiple requests are accessing the same cache key simultaneously, resulting in a caching stampede. This leads to a situation where multiple threads are trying to update the same cache entry, causing unpredictable behavior and decreased system performance.\n\n**Reproducing the issue:**\n\n*   Multiple concurrent requests access a cache key\n*   Each request attempts to update the cache entry\n*   Unpredictable behavior due to concurrent updates\n\n**Expected behavior:**\n\n*   Only one request updates the cache entry\n*   Others wait until the update is complete\n*   Predictable behavior\n\n**Real-world scenario:**\n\n*   A high-traffic e-commerce platform utilizing Redis for caching and rate limiting\n*   Multiple requests from different users attempt to update the same rate limiting key\n*   Caching stampede occurs, leading to unpredictable behavior and decreased performance",
-            "solution_code": "",
-            "\nfrom redis import Redis\nfrom threading import Lock\n\nclass DistributedCache:\n    def __init__(self):\n        self.redis = Redis(host='localhost', port=6379, db=0)\n        self.lock = Lock()\n\n    def get(self, key):\n        with self.lock:\n            return self.redis.get(key)\n\n    def set(self, key, value):\n        with self.lock:\n            return self.redis.set(key, value)\n\n    def update(self, key, value):\n        with self.lock:\n            self.redis.delete(key)\n            self.redis.set(key, value)\n\n# Usage\ncache = DistributedCache()\ncache.update('rate_limit_key', 10)\n": "",
-            "explanation": "A caching stampede occurs when multiple requests attempt to update the same cache entry simultaneously. This can lead to unpredictable behavior and decreased system performance. To prevent this, we can employ a distributed locking mechanism to synchronize access to shared cache resources.\n\n**Root Cause Analysis:**\n\n*   In a multi-threaded environment, concurrent requests can access the same cache key simultaneously\n*   Without synchronization, multiple threads can attempt to update the same cache entry\n*   This leads to unpredictable behavior and decreased system performance\n\n**Mitigation/Prevention guide:**\n\n1.  **Distributed Locking:** Employ a distributed locking mechanism to synchronize access to shared cache resources. In this example, we use a Redis lock to achieve this.\n2.  **Locking Strategy:** Choose a suitable locking strategy based on your use case, such as **try-lock** or **lease-based** locking.\n3.  **Cache Management:** Implement proper cache management practices, such as cache invalidation and cache partitioning, to minimize the likelihood of caching stampedes.\n4.  **Monitoring:** Continuously monitor your system's performance and cache behavior to detect potential caching stampede issues.\n\n**Time Complexity:** O(1) for get and set operations, O(n) for update operation (due to delete and set operations)\n**Space Complexity:** O(n) for cache storage\n**Step-by-Step Logic:**\n1.  Initialize a DistributedCache instance\n2.  Use the get method to retrieve a cache entry\n3.  Use the set method to set a cache entry\n4.  Use the update method to update a cache entry while ensuring exclusive access using the distributed lock",
+            "id": 8,
+            "title": "LeetCode 121: Best Time to Buy and Sell Stock",
+            "category": "LeetCode Python",
+            "difficulty": "Easy",
+            "summary": "Find maximum profit from buying and selling a stock once.",
+            "problem_description": "You are given an array `prices` where `prices[i]` is the price of a given stock on the $i$-th day.\nYou want to maximize your profit by choosing a single day to buy one stock and choosing a different day in the future to sell that stock.\nReturn the maximum profit you can achieve. If you cannot achieve any profit, return `0`.",
+            "solution_code": "def maxProfit(prices: list[int]) -> int:\n    if not prices:\n        return 0\n        \n    min_price = float('inf')\n    max_profit = 0\n    \n    for price in prices:\n        # Keep track of minimum buy price seen so far\n        if price < min_price:\n            min_price = price\n        # Calculate profit if sold today and update max profit\n        elif price - min_price > max_profit:\n            max_profit = price - min_price\n            \n    return max_profit",
+            "explanation": "### One-pass Greedy Approach\n\n- **Time Complexity:** $O(n)$ single pass scan.\n- **Space Complexity:** $O(1)$ constant space.\n\n### Explanation\nInstead of a nested loop checking every day against every future day ($O(n^2)$), we maintain a running `min_price` of the stock. As we scan the list, we compute the hypothetical profit we would make if we sold today: $price - min\\_price$. We save the maximum value encountered.",
             "tags": [
-                "Caching",
-                "Distributed Locking",
-                "Redis"
-            ],
-            "id": 21
+                "Array",
+                "Dynamic Programming",
+                "Easy"
+            ]
         },
         {
-            "id": 10,
-            "title": "LeetCode 72: Edit Distance (Levenshtein)",
+            "id": 3,
+            "title": "LeetCode 146: LRU Cache Design",
             "category": "LeetCode Python",
-            "difficulty": "Hard",
-            "summary": "Find minimum insertions, deletions, or substitutions to transform one string into another.",
-            "problem_description": "Given two strings `word1` and `word2`, return the minimum number of operations required to convert `word1` to `word2`.\nYou have the following three operations permitted on a word:\n- Insert a character\n- Delete a character\n- Replace a character",
-            "solution_code": "def minDistance(word1: str, word2: str) -> int:\n    m, n = len(word1), len(word2)\n    # DP Table: (m+1) x (n+1)\n    dp = [[0] * (n + 1) for _ in range(m + 1)]\n    \n    # Initialize base cases (converting empty string)\n    for i in range(m + 1):\n        dp[i][0] = i\n    for j in range(n + 1):\n        dp[0][j] = j\n        \n    for i in range(1, m + 1):\n        for j in range(1, n + 1):\n            if word1[i-1] == word2[j-1]:\n                # If characters match, no new operation needed\n                dp[i][j] = dp[i-1][j-1]\n            else:\n                # Minimum of (Delete, Insert, Replace) + 1\n                dp[i][j] = min(\n                    dp[i-1][j],    # Delete\n                    dp[i][j-1],    # Insert\n                    dp[i-1][j-1]   # Replace\n                ) + 1\n                \n    return dp[m][n]",
-            "explanation": "### Dynamic Programming (Bottom-Up)\n\n- **Time Complexity:** $O(M \\times N)$ where $M$ and $N$ are the lengths of the two words. The nested loop fills out the grid.\n- **Space Complexity:** $O(M \\times N)$ to store the DP grid (can be optimized to $O(N)$).\n\n### Subproblem Recurrence Relation\nLet $dp[i][j]$ represent the edit distance of prefixes $word1[0..i-1]$ and $word2[0..j-1]$. If character $word1[i-1] == word2[j-1]$, no edit is needed, so $dp[i][j] = dp[i-1][j-1]$. Otherwise, we take the minimum cost of replacing ($dp[i-1][j-1]$), deleting ($dp[i-1][j]$), or inserting ($dp[i][j-1]$) and add 1.",
+            "difficulty": "Medium",
+            "summary": "Design a Least Recently Used (LRU) Cache using double linked lists.",
+            "problem_description": "Design a data structure that follows the constraints of a Least Recently Used (LRU) cache.\nImplement the `LRUCache` class:\n- `LRUCache(capacity)` Initialize the LRU cache with positive size capacity.\n- `get(key)` Return the value of the key if it exists, otherwise return -1.\n- `put(key, value)` Update the value of the key if it exists. Otherwise, add the key-value pair. If number of keys exceeds capacity, evict the least recently used key.",
+            "solution_code": "class Node:\n    def __init__(self, key=0, value=0):\n        self.key = key\n        self.value = value\n        self.prev = None\n        self.next = None\n\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.cache = {}  # Map: key -> Node\n        \n        # Dummy head and tail to simplify list manipulation\n        self.head = Node()\n        self.tail = Node()\n        self.head.next = self.tail\n        self.tail.prev = self.head\n\n    def _remove(self, node: Node):\n        # Remove node from double linked list\n        prev_node = node.prev\n        next_node = node.next\n        prev_node.next = next_node\n        next_node.prev = prev_node\n\n    def _add_to_head(self, node: Node):\n        # Insert node immediately after dummy head (most recently used)\n        node.next = self.head.next\n        node.prev = self.head\n        self.head.next.prev = node\n        self.head.next = node\n\n    def get(self, key: int) -> int:\n        if key in self.cache:\n            node = self.cache[key]\n            self._remove(node)\n            self._add_to_head(node)  # Mark as recently used\n            return node.value\n        return -1\n\n    def put(self, key: int, value: int) -> None:\n        if key in self.cache:\n            node = self.cache[key]\n            node.value = value\n            self._remove(node)\n            self._add_to_head(node)\n        else:\n            if len(self.cache) >= self.capacity:\n                # Evict LRU from tail\n                lru_node = self.tail.prev\n                self._remove(lru_node)\n                del self.cache[lru_node.key]\n                \n            new_node = Node(key, value)\n            self.cache[key] = new_node\n            self._add_to_head(new_node)",
+            "explanation": "### Cache Mechanics\n\n- **Get / Put Time:** $O(1)$ constant time complexity.\n- **Space Complexity:** $O(c)$ where $c$ is the capacity of the cache, storing nodes and keys.\n\n### Implementation Insights\nTo achieve $O(1)$ lookup, we need a hash map. To achieve $O(1)$ eviction order adjustment, we need a doubly linked list. By linking them together, the hash map maps keys to nodes in the doubly linked list, enabling us to instantly jump to any node, remove it, and append it to the front (representing Most Recently Used) when accessed.",
             "tags": [
-                "String",
+                "Design",
+                "Hash Table",
+                "Doubly Linked List",
+                "Medium"
+            ]
+        },
+        {
+            "title": "LeetCode 53: Maximum Subarray",
+            "category": "LeetCode Python",
+            "difficulty": "Medium",
+            "summary": "Find the maximum sum of a contiguous subarray within a given one-dimensional array of integers.",
+            "problem_description": "Given an integer array `nums`, find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.",
+            "solution_code": "\ndef maxSubArray(nums):\n    max_sum = float('-inf')\n    current_sum = 0\n\n    for num in nums:\n        current_sum = max(num, current_sum + num)\n        max_sum = max(max_sum, current_sum)\n\n    return max_sum\n\n# Example usage\nnumbers = [-2, 1, -3, 4, -1, 2, 1, -5, 4]\nprint(maxSubArray(numbers))  # Output: 6 (4 + (-1) + 2 + 1)\n",
+            "explanation": "## Algorithm Overview\n\nThe `maxSubArray` function uses Kadane's algorithm to find the maximum sum of a contiguous subarray within the given array of integers.\n\n## Time Complexity Analysis\n\nThe time complexity of this solution is O(n), where n is the length of the input array. This is because we only need to traverse the array once to calculate the maximum sum.\n\n## Space Complexity Analysis\n\nThe space complexity of this solution is O(1), as we only use a constant amount of space to store the maximum sum and the current sum.\n\n## Step-by-Step Logic\n\n1. Initialize the `max_sum` variable to negative infinity, which will store the maximum sum found so far.\n2. Initialize the `current_sum` variable to 0, which will store the sum of the current contiguous subarray.\n3. Iterate through each number in the input array.\n4. For each number, update the `current_sum` by taking the maximum of the current number and the sum of the current number and the previous `current_sum`. This is the key step in Kadane's algorithm, where we decide whether to include the current number in the current contiguous subarray.\n5. Update the `max_sum` by taking the maximum of the current `max_sum` and the updated `current_sum`.\n6. Return the `max_sum` after iterating through the entire array.\n",
+            "tags": [
+                "Kadane's algorithm",
                 "Dynamic Programming",
-                "Hard"
+                "Contiguous Subarray"
+            ],
+            "id": 22
+        },
+        {
+            "id": 18,
+            "title": "Prompt Token Window Overflow in RAG Pipelines",
+            "category": "Generative AI & LLMs",
+            "difficulty": "Medium",
+            "summary": "Manage chunk context sizes to avoid token limit overflow in Retrieval-Augmented Generation.",
+            "problem_description": "A company RAG (Retrieval-Augmented Generation) chatbot crashed when answering queries about large financial PDFs. The vector database retrieved dozens of text chunks, creating a combined prompt that exceeded the LLM's context window limit (e.g. 8192 tokens), throwing API errors.",
+            "solution_code": "# RAG Prompt Context Limiter with Token Counting (tiktoken)\nimport tiktoken\n\ndef build_safe_rag_prompt(query: str, retrieved_chunks: list[str], max_tokens: int = 6000) -> str:\n    # Use the appropriate tokenizer for the target model (e.g. cl100k_base for gpt-4)\n    encoding = tiktoken.get_encoding(\"cl100k_base\")\n    \n    base_prompt_template = \"Answer the query based on the context below.\\n\\nContext:\\n{context}\\n\\nQuery: {query}\\nAnswer:\"\n    \n    # Calculate base tokens (template structure + query)\n    empty_prompt = base_prompt_template.format(context=\"\", query=query)\n    base_tokens = len(encoding.encode(empty_prompt))\n    \n    available_tokens = max_tokens - base_tokens\n    included_chunks = []\n    current_tokens = 0\n    \n    # Sort chunks by relevance score if available\n    for chunk in retrieved_chunks:\n        chunk_tokens = len(encoding.encode(chunk))\n        if current_tokens + chunk_tokens <= available_tokens:\n            included_chunks.append(chunk)\n            current_tokens += chunk_tokens\n        else:\n            # Stop adding chunks to prevent token overflow\n            break\n            \n    context_str = \"\\n---\\n\".join(included_chunks)\n    return base_prompt_template.format(context=context_str, query=query)",
+            "explanation": "### Token Management in LLMs\n\nLarge Language Models have a strict maximum context window representing the sum of prompt tokens and generated output tokens. In RAG pipelines, naive retrieval can fetch too many long chunks. If unchecked, sending this context to the LLM throws an API error, degrading system availability.\n\n### Resolution Mechanics\n1. **Eager Token Calculation:** Use model-specific tokenizers (like `tiktoken` for OpenAI or `sentencepiece` for Llama) to count exact token lengths of prompt templates and dynamic query structures.\n2. **Truncation & Rank Filtering:** Add retrieved document chunks to the prompt context one by one in order of retrieval relevance, checking the cumulative token count. Stop adding chunks once the safety threshold is reached.",
+            "tags": [
+                "RAG",
+                "LLM",
+                "Generative AI",
+                "Python"
             ]
         },
         {
@@ -318,6 +160,101 @@
             ]
         },
         {
+            "id": 2,
+            "title": "LeetCode 3: Longest Substring Without Repeating Characters",
+            "category": "LeetCode Python",
+            "difficulty": "Medium",
+            "summary": "Find the length of the longest substring without repeating characters.",
+            "problem_description": "Given a string `s`, find the length of the longest substring without repeating characters.\n\n**Example:**\nInput: `s = \"abcabcbb\"`\nOutput: `3` (The substring is `\"abc\"`)",
+            "solution_code": "def lengthOfLongestSubstring(s: str) -> int:\n    char_map = {}  # Stores char -> its last seen index\n    max_length = 0\n    start = 0      # Left boundary of the sliding window\n    \n    for end, char in enumerate(s):\n        # If char was seen and is within our current window\n        if char in char_map and char_map[char] >= start:\n            # Shrink/slide window past the previous occurrence\n            start = char_map[char] + 1\n            \n        char_map[char] = end\n        max_length = max(max_length, end - start + 1)\n        \n    return max_length",
+            "explanation": "### Sliding Window Technique\n\n- **Time Complexity:** $O(n)$ where $n$ is the length of the string. The right pointer `end` scans through the string once.\n- **Space Complexity:** $O(min(a, m))$ where $a$ is the alphabet size and $m$ is string length. In the worst case, we store the position of all unique characters.\n\n### Detailed Breakdown\nWe maintain a sliding window `[start, end]`. As we move the `end` pointer to the right, we check if the current character has been seen. If it has been seen, and its index is greater than or equal to `start`, we slide `start` directly to `last_seen_index + 1`. This avoids redundant inner loops, completing the search in a single pass.",
+            "tags": [
+                "String",
+                "Sliding Window",
+                "Medium"
+            ]
+        },
+        {
+            "id": 17,
+            "title": "FastAPI ThreadPool Starvation",
+            "category": "Production Bugs & Debugging",
+            "difficulty": "Medium",
+            "summary": "Resolve API stalling in async frameworks caused by blocking synchronous calls.",
+            "problem_description": "A high-performance FastAPI service crashed when under load. One endpoint performed a heavy image analysis using a synchronous OpenCV library. During analysis, other lightweight endpoints (like health checks) stopped responding entirely, leading to health check failures and orchestrator restarts.",
+            "solution_code": "# FastAPI Async vs Sync thread allocation fix\nimport asyncio\nfrom fastapi import FastAPI\nimport time\n\napp = FastAPI()\n\ndef heavy_blocking_cpu_bound_operation():\n    # Simulated OpenCV image processing\n    time.sleep(2)\n    return \"processed_image_metadata\"\n\n# --- BUGGY APPROACH (Blocks the single-threaded Event Loop) ---\n@app.get(\"/process-buggy\")\nasync def process_buggy():\n    # Crucial Mistake: Running blocking synchronous code inside 'async def'.\n    # This blocks the single asyncio thread, freezing the entire API server.\n    data = heavy_blocking_cpu_bound_operation()\n    return {\"status\": \"done\", \"data\": data}\n\n# --- OPTION 1: Use normal 'def' (FastAPI automatically runs in ThreadPool) ---\n@app.get(\"/process-option1\")\ndef process_option1():\n    # FastAPI runs normal 'def' endpoints in an external thread pool automatically.\n    data = heavy_blocking_cpu_bound_operation()\n    return {\"status\": \"done\", \"data\": data}\n\n# --- OPTION 2: Run in asyncio executor (Explicit async control) ---\n@app.get(\"/process-option2\")\nasync def process_option2():\n    loop = asyncio.get_running_loop()\n    # Offload the blocking operation to a default thread pool executor\n    data = await loop.run_in_executor(None, heavy_blocking_cpu_bound_operation)\n    return {\"status\": \"done\", \"data\": data}",
+            "explanation": "### Event Loop Blockage\n\nFastAPI is built on `asyncio` which runs on a **single thread**. When you declare an endpoint with `async def`, the event loop expects the code inside to yield control using `await`. If you run blocking synchronous code (like file I/O, heavy computation, or blocking libraries like requests/OpenCV) inside an `async def`, the single thread of the event loop is entirely blocked. No other request can be handled during this time.\n\n### Threading Guidelines in FastAPI\n- If your endpoint uses blocking libraries: Declare it with regular `def`. FastAPI runs it in a separate thread pool so the async event loop stays free.\n- If your endpoint is fully asynchronous: Declare it with `async def` and use await on all I/O.",
+            "tags": [
+                "FastAPI",
+                "Python",
+                "Concurrency",
+                "Medium"
+            ]
+        },
+        {
+            "id": 12,
+            "title": "Redis Cache Stampede (Thundering Herd)",
+            "category": "Production Scaling & Systems",
+            "difficulty": "Hard",
+            "summary": "Implement XFetch/Probabilistic Early Expiration to solve cache stampedes on hot keys.",
+            "problem_description": "A high-traffic homepage cached a hot config key (`global_navigation_menu`) in Redis with a 1-hour TTL. When the key expired, 50,000 concurrent requests found a cache miss simultaneously. They all queried the primary SQL database to rebuild the cache, causing a CPU spike to 100% on the database, locking tables, and triggering a total system outage.",
+            "solution_code": "import time\nimport math\nimport random\n\n# Cache Client implementing Probabilistic Early Expiration (XFetch algorithm)\nclass CacheClient:\n    def __init__(self, redis_client, db_client):\n        self.redis = redis_client\n        self.db = db_client\n\n    def xfetch(self, key, ttl_seconds, beta=1.0):\n        # Retrieve value and delta (computation time to fetch from DB)\n        # Redis stores value as JSON containing: {\"data\": data, \"delta\": delta, \"ttl\": ttl}\n        cached = self.redis.get_json(key)\n        \n        if not cached:\n            return self._rebuild_and_cache(key, ttl_seconds)\n            \n        value = cached[\"data\"]\n        delta = cached[\"delta\"]   # Time in seconds taken to read from DB last time\n        expiration = cached[\"expiration\"] # Epoch timestamp of expiration\n        \n        # Probabilistic Early Expiration calculation\n        # formula: time() - (delta * beta * ln(rand())) > expiration\n        # If true, one of the concurrent clients will proactively rebuild the cache BEFORE it expires.\n        if (time.time() - (delta * beta * math.log(random.random()))) > expiration:\n            # Rebuild cache asynchronously or inline (safely locks or replaces value)\n            return self._rebuild_and_cache(key, ttl_seconds)\n            \n        return value\n\n    def _rebuild_and_cache(self, key, ttl):\n        start_time = time.time()\n        # Fetch from SQL DB\n        data = self.db.query_navigation_menu()\n        delta = time.time() - start_time\n        \n        expiration = time.time() + ttl\n        payload = {\n            \"data\": data,\n            \"delta\": delta,\n            \"expiration\": expiration\n        }\n        self.redis.set_json(key, payload, ex=ttl + 300) # Keep in Redis slightly longer than logical expiration\n        return data",
+            "explanation": "### Cache Stampede Mechanics\n\nWhen a high-traffic cache key expires, the cache goes from $100\\%$ hit rate to $0\\%$ for that key. If the rebuild time (fetching from SQL, formatting JSON) takes $200\\text{ms}$ and traffic is $10,000\\text{ req/sec}$, then $2,000$ database queries are triggered concurrently before the first query can write the value back to the cache.\n\n### The XFetch Solution\nInstead of waiting for the key to expire, we use a probabilistic algorithm (XFetch, developed by Vattani et al.) to expire the key early for a *single* random request as the expiration time approaches. The probability of early expiration increases as the key gets closer to its TTL and is proportional to the database query duration. Only one user experience incurs the database write, seamlessly rebuilding the cache in background.",
+            "tags": [
+                "Caching",
+                "Redis",
+                "High Traffic",
+                "System Design"
+            ]
+        },
+        {
+            "title": "Production Bug: Caching Stampede in High-Concurrency Web Service",
+            "category": "Production Scaling & Systems",
+            "difficulty": "Hard",
+            "summary": "Prevent caching stampedes by employing a distributed locking mechanism to synchronize access to shared cache resources in multi-threaded/high-concurrency web services using Redis",
+            "problem_description": "A high-concurrency web service utilizing Redis as a caching layer is experiencing an issue where multiple requests are accessing the same cache key simultaneously, resulting in a caching stampede. This leads to a situation where multiple threads are trying to update the same cache entry, causing unpredictable behavior and decreased system performance.\n\n**Reproducing the issue:**\n\n*   Multiple concurrent requests access a cache key\n*   Each request attempts to update the cache entry\n*   Unpredictable behavior due to concurrent updates\n\n**Expected behavior:**\n\n*   Only one request updates the cache entry\n*   Others wait until the update is complete\n*   Predictable behavior\n\n**Real-world scenario:**\n\n*   A high-traffic e-commerce platform utilizing Redis for caching and rate limiting\n*   Multiple requests from different users attempt to update the same rate limiting key\n*   Caching stampede occurs, leading to unpredictable behavior and decreased performance",
+            "solution_code": "",
+            "\nfrom redis import Redis\nfrom threading import Lock\n\nclass DistributedCache:\n    def __init__(self):\n        self.redis = Redis(host='localhost', port=6379, db=0)\n        self.lock = Lock()\n\n    def get(self, key):\n        with self.lock:\n            return self.redis.get(key)\n\n    def set(self, key, value):\n        with self.lock:\n            return self.redis.set(key, value)\n\n    def update(self, key, value):\n        with self.lock:\n            self.redis.delete(key)\n            self.redis.set(key, value)\n\n# Usage\ncache = DistributedCache()\ncache.update('rate_limit_key', 10)\n": "",
+            "explanation": "A caching stampede occurs when multiple requests attempt to update the same cache entry simultaneously. This can lead to unpredictable behavior and decreased system performance. To prevent this, we can employ a distributed locking mechanism to synchronize access to shared cache resources.\n\n**Root Cause Analysis:**\n\n*   In a multi-threaded environment, concurrent requests can access the same cache key simultaneously\n*   Without synchronization, multiple threads can attempt to update the same cache entry\n*   This leads to unpredictable behavior and decreased system performance\n\n**Mitigation/Prevention guide:**\n\n1.  **Distributed Locking:** Employ a distributed locking mechanism to synchronize access to shared cache resources. In this example, we use a Redis lock to achieve this.\n2.  **Locking Strategy:** Choose a suitable locking strategy based on your use case, such as **try-lock** or **lease-based** locking.\n3.  **Cache Management:** Implement proper cache management practices, such as cache invalidation and cache partitioning, to minimize the likelihood of caching stampedes.\n4.  **Monitoring:** Continuously monitor your system's performance and cache behavior to detect potential caching stampede issues.\n\n**Time Complexity:** O(1) for get and set operations, O(n) for update operation (due to delete and set operations)\n**Space Complexity:** O(n) for cache storage\n**Step-by-Step Logic:**\n1.  Initialize a DistributedCache instance\n2.  Use the get method to retrieve a cache entry\n3.  Use the set method to set a cache entry\n4.  Use the update method to update a cache entry while ensuring exclusive access using the distributed lock",
+            "tags": [
+                "Caching",
+                "Distributed Locking",
+                "Redis"
+            ],
+            "id": 21
+        },
+        {
+            "id": 15,
+            "title": "Kafka Consumer Lag & Rebalance Storm",
+            "category": "Production Scaling & Systems",
+            "difficulty": "Hard",
+            "summary": "Resolve Kafka consumer group dropouts and rebalancing loops under heavy message payloads.",
+            "problem_description": "During peak hours, an order processing system backed by Kafka began falling behind. As lag accumulated, consumers frequently disconnected from the group, triggering continuous partition rebalancing. During rebalancing, message processing stopped entirely, creating a cascading backlog.",
+            "solution_code": "# Python Kafka Consumer (Confluent-Kafka) Optimization Settings\n# Preventing rebalance storms by adjusting processing intervals and heartbeat limits.\n\nfrom confluent_kafka import Consumer\n\nconf = {\n    'bootstrap.servers': \"kafka-broker-1:9092\",\n    'group.id': \"order-processors\",\n    'auto.offset.reset': 'earliest',\n    'enable.auto.commit': False,  # Manual commits to ensure processing completeness\n    \n    # --- OPTIMIZED REBALANCE CONFIG ---\n    'session.timeout.ms': 45000,      # Max time to miss heartbeats before eviction (45s)\n    'heartbeat.interval.ms': 15000,   # Send heartbeats every 15s (1/3 of session timeout)\n    'max.poll.interval.ms': 300000,   # Allow up to 5 minutes to process a single batch\n    'max.partition.fetch.bytes': 1048576, # Limit batch size in bytes (1MB) to process quickly\n}\n\nconsumer = Consumer(conf)\nconsumer.subscribe(['orders'])",
+            "explanation": "### Rebalance Storm Anatomy\n\nKafka consumers send periodic heartbeats to the broker to prove they are alive. They also poll for new messages in a loop. If a consumer takes too long to process a fetched batch of messages (exceeding `max.poll.interval.ms`), the broker assumes the consumer has hung or died. The broker evicts the consumer and triggers a partition rebalance. The evicted consumer then finishes its batch, tries to rejoin, triggers *another* rebalance, and the group gets stuck in a perpetual 'rebalance storm' where no work is completed.\n\n### Optimization Guide\n1. **Increase Poll Interval:** Set `max.poll.interval.ms` to a value comfortably larger than the worst-case processing time for a single batch.\n2. **Limit Batch Sizes:** Lower the number of records returned in a single poll using settings like `max.poll.records` or `max.partition.fetch.bytes` so processing finishes quickly.\n3. **Decouple Fetch and Process:** Implement a queue-based consumer where the Kafka thread only polls and pushes to an in-memory thread pool for processing.",
+            "tags": [
+                "Kafka",
+                "System Design",
+                "Message Queues",
+                "Scaling"
+            ]
+        },
+        {
+            "id": 4,
+            "title": "LeetCode 200: Number of Islands",
+            "category": "LeetCode Python",
+            "difficulty": "Medium",
+            "summary": "Count the number of separate islands in a 2D binary grid.",
+            "problem_description": "Given an `m x n` 2D binary grid `grid` which represents a map of `'1'`s (land) and `'0'`s (water), return the number of islands.\nAn island is surrounded by water and is formed by connecting adjacent lands horizontally or vertically. You may assume all four edges of the grid are all surrounded by water.",
+            "solution_code": "def numIslands(grid: list[list[str]]) -> int:\n    if not grid:\n        return 0\n        \n    rows, cols = len(grid), len(grid[0])\n    island_count = 0\n    \n    def dfs(r, c):\n        # Base case: boundary check or water cell\n        if r < 0 or r >= rows or c < 0 or c >= cols or grid[r][c] == '0':\n            return\n            \n        # Mark cell as visited by sinking it to '0'\n        grid[r][c] = '0'\n        \n        # Traverse in 4 directions\n        dfs(r + 1, c)\n        dfs(r - 1, c)\n        dfs(r, c + 1)\n        dfs(r, c - 1)\n\n    for r in range(rows):\n        for c in range(cols):\n            if grid[r][c] == '1':\n                island_count += 1\n                dfs(r, c)  # Visit all connected land\n                \n    return island_count",
+            "explanation": "### Graph Traversal (DFS/BFS)\n\n- **Time Complexity:** $O(M \\times N)$ where $M$ is the number of rows and $N$ is the number of columns. Every element in the grid is visited at most once.\n- **Space Complexity:** $O(M \\times N)$ worst case stack space if the entire grid is one island.\n\n### Explanation\nWe iterate through the grid. When we find a `'1'` (land), we increment our island counter and run a Depth First Search (DFS) to find all horizontally and vertically adjacent land cells, sinking them to `'0'` so they won't be counted again. The number of times we initiate a DFS is the total number of islands.",
+            "tags": [
+                "Graph",
+                "DFS",
+                "Matrix",
+                "Medium"
+            ]
+        },
+        {
             "id": 20,
             "title": "Vector DB Retrieval Recall Degradation under High Concurrency",
             "category": "Generative AI & LLMs",
@@ -331,6 +268,84 @@
                 "HNSW",
                 "System Design",
                 "Generative AI"
+            ]
+        },
+        {
+            "id": 10,
+            "title": "LeetCode 72: Edit Distance (Levenshtein)",
+            "category": "LeetCode Python",
+            "difficulty": "Hard",
+            "summary": "Find minimum insertions, deletions, or substitutions to transform one string into another.",
+            "problem_description": "Given two strings `word1` and `word2`, return the minimum number of operations required to convert `word1` to `word2`.\nYou have the following three operations permitted on a word:\n- Insert a character\n- Delete a character\n- Replace a character",
+            "solution_code": "def minDistance(word1: str, word2: str) -> int:\n    m, n = len(word1), len(word2)\n    # DP Table: (m+1) x (n+1)\n    dp = [[0] * (n + 1) for _ in range(m + 1)]\n    \n    # Initialize base cases (converting empty string)\n    for i in range(m + 1):\n        dp[i][0] = i\n    for j in range(n + 1):\n        dp[0][j] = j\n        \n    for i in range(1, m + 1):\n        for j in range(1, n + 1):\n            if word1[i-1] == word2[j-1]:\n                # If characters match, no new operation needed\n                dp[i][j] = dp[i-1][j-1]\n            else:\n                # Minimum of (Delete, Insert, Replace) + 1\n                dp[i][j] = min(\n                    dp[i-1][j],    # Delete\n                    dp[i][j-1],    # Insert\n                    dp[i-1][j-1]   # Replace\n                ) + 1\n                \n    return dp[m][n]",
+            "explanation": "### Dynamic Programming (Bottom-Up)\n\n- **Time Complexity:** $O(M \\times N)$ where $M$ and $N$ are the lengths of the two words. The nested loop fills out the grid.\n- **Space Complexity:** $O(M \\times N)$ to store the DP grid (can be optimized to $O(N)$).\n\n### Subproblem Recurrence Relation\nLet $dp[i][j]$ represent the edit distance of prefixes $word1[0..i-1]$ and $word2[0..j-1]$. If character $word1[i-1] == word2[j-1]$, no edit is needed, so $dp[i][j] = dp[i-1][j-1]$. Otherwise, we take the minimum cost of replacing ($dp[i-1][j-1]$), deleting ($dp[i-1][j]$), or inserting ($dp[i][j-1]$) and add 1.",
+            "tags": [
+                "String",
+                "Dynamic Programming",
+                "Hard"
+            ]
+        },
+        {
+            "id": 5,
+            "title": "LeetCode 23: Merge k Sorted Lists",
+            "category": "LeetCode Python",
+            "difficulty": "Hard",
+            "summary": "Merge k sorted linked lists in O(N log k) time.",
+            "problem_description": "You are given an array of `k` linked-lists `lists`, each linked-list is sorted in ascending order.\nMerge all the linked-lists into one sorted linked-list and return it.\n\n**Example:**\nInput: `lists = [[1,4,5],[1,3,4],[2,6]]`\nOutput: `[1,1,2,3,4,4,5,6]`",
+            "solution_code": "import heapq\n\nclass ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n        \n    # Python 3 compatibility for priority queue comparison\n    def __lt__(self, other):\n        return self.val < other.val\n\ndef mergeKLists(lists: list[ListNode]) -> ListNode:\n    min_heap = []\n    \n    # Push the head node of each non-empty list into the heap\n    for idx, lst_head in enumerate(lists):\n        if lst_head:\n            # Storing (node.val, index, node) to ensure uniqueness\n            heapq.heappush(min_heap, (lst_head.val, idx, lst_head))\n            \n    dummy = ListNode(0)\n    curr = dummy\n    \n    while min_heap:\n        val, idx, node = heapq.heappop(min_heap)\n        curr.next = node\n        curr = curr.next\n        \n        # If there is a next node, push it to heap\n        if node.next:\n            heapq.heappush(min_heap, (node.next.val, idx, node.next))\n            \n    return dummy.next",
+            "explanation": "### Priority Queue (Min-Heap)\n\n- **Time Complexity:** $O(N \\log k)$ where $N$ is the total number of nodes in all lists, and $k$ is the number of linked lists. Inserting and extracting from the heap costs $O(\\log k)$.\n- **Space Complexity:** $O(k)$ auxiliary space for the min-heap containing at most one node from each of the $k$ lists.\n\n### Explanation\nInstead of checking every list head on each step (which would take $O(N \\cdot k)$), we use a min-heap to keep track of the smallest node values across the $k$ list heads. We pop the smallest node from the heap, append it to our merged list, and push its next sibling back into the heap.",
+            "tags": [
+                "Linked List",
+                "Divide and Conquer",
+                "Heap (Priority Queue)",
+                "Hard"
+            ]
+        },
+        {
+            "id": 14,
+            "title": "N+1 Query Latency in SQLAlchemy ORM",
+            "category": "Production Bugs & Debugging",
+            "difficulty": "Medium",
+            "summary": "Identify and resolve SQL query explosion caused by lazy loading in ORM relationships.",
+            "problem_description": "An API endpoint fetching a list of 100 blog posts along with their authors took 3.2 seconds to resolve, executing 101 separate SQL queries. The ORM was lazy-loading the `Author` relationship for each post in a loop.",
+            "solution_code": "# SQLAlchemy Models and Eager Loading Fixes\n\nfrom sqlalchemy import Column, Integer, String, ForeignKey\nfrom sqlalchemy.orm import relationship, declarative_base, joinedload, selectinload\nfrom sqlalchemy.future import select\n\nBase = declarative_base()\n\nclass User(Base):\n    __tablename__ = 'users'\n    id = Column(Integer, primary_key=True)\n    name = Column(String)\n\nclass Post(Base):\n    __tablename__ = 'posts'\n    id = Column(Integer, primary_key=True)\n    title = Column(String)\n    user_id = Column(Integer, ForeignKey('users.id'))\n    author = relationship(\"User\")\n\n# --- BUGGY LAZY-LOADING CODE (Executes 1 + N queries) ---\n# select(Post) -> fetches 100 posts\n# For each post, accessing post.author.name executes: SELECT * FROM users WHERE id = ?\nasync def get_posts_buggy(session):\n    result = await session.execute(select(Post))\n    posts = result.scalars().all()\n    return [{\"title\": p.title, \"author\": p.author.name} for p in posts]\n\n# --- FIXED EAGER-LOADING CODE (Executes exactly 1 JOIN query) ---\n# Using joinedload tells SQLAlchemy to fetch the related User table using a SQL JOIN.\nasync def get_posts_fixed(session):\n    stmt = select(Post).options(joinedload(Post.author))\n    result = await session.execute(stmt)\n    posts = result.scalars().all()\n    return [{\"title\": p.title, \"author\": p.author.name} for p in posts]",
+            "explanation": "### N+1 Query Dynamics\n\nThe N+1 query problem occurs when an application loads a collection of $N$ items from a database, and then loops through each item to load a related item (e.g., $N$ details). This results in $1$ query to fetch the list, followed by $N$ separate queries to fetch the child objects, leading to high database latency due to network roundtrips.\n\n### Eager Loading Types\n- **Joined Load (`joinedload`):** Performs a `LEFT OUTER JOIN` in the initial SQL statement. Best for Many-to-One relationships.\n- **Select In Load (`selectinload`):** Emits a second query using the `IN` operator (e.g. `SELECT * FROM users WHERE id IN (1, 2, 3...)`). Best for One-to-Many collections, preventing huge cartesian product tables.",
+            "tags": [
+                "Database",
+                "SQLAlchemy",
+                "Python",
+                "ORM"
+            ]
+        },
+        {
+            "id": 1,
+            "title": "LeetCode 1: Two Sum",
+            "category": "LeetCode Python",
+            "difficulty": "Easy",
+            "summary": "Find two numbers in an array that add up to a specific target.",
+            "problem_description": "Given an array of integers `nums` and an integer `target`, return indices of the two numbers such that they add up to `target`.\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.\nYou can return the answer in any order.",
+            "solution_code": "def twoSum(nums: list[int], target: int) -> list[int]:\n    # Use a hash map to store value -> index mapping\n    num_map = {}\n    \n    for index, value in enumerate(nums):\n        complement = target - value\n        # If the complement exists in the map, we found the pair\n        if complement in num_map:\n            return [num_map[complement], index]\n        # Otherwise, store the index of the current value\n        num_map[value] = index\n        \n    return []  # Fallback (though constraint guarantees a solution)",
+            "explanation": "### Algorithm Analysis\n\n- **Time Complexity:** $O(n)$ where $n$ is the number of elements in the array. We traverse the list containing $n$ elements exactly once. Each lookup in the hash table costs only $O(1)$ time.\n- **Space Complexity:** $O(n)$ to store the key-value pairs in the dictionary/hash map, which stores at most $n$ elements.\n\n### Explanation\nInstead of checking all pairs using a nested loop ($O(n^2)$), we can look for the 'complement' ($target - nums[i]$) of the current number. By storing visited elements in a dictionary, we can check if the complement exists in constant $O(1)$ time.",
+            "tags": [
+                "Array",
+                "Hash Table",
+                "Easy"
+            ]
+        },
+        {
+            "id": 13,
+            "title": "Memory Leak in Python Asynchronous Event Loop",
+            "category": "Production Bugs & Debugging",
+            "difficulty": "Hard",
+            "summary": "Fix unbounded memory growth in asyncio WebSockets caused by unawaited tasks and global references.",
+            "problem_description": "A Python asyncio WebSocket server processing IoT sensor telemetry experienced linear memory leaks, growing from 150MB to 8GB over 48 hours and triggering Linux Out-Of-Memory (OOM) killer terminations. Heap analysis showed millions of uncollected `Task` and `Future` objects.",
+            "solution_code": "# Buggy code vs Fixed code in asyncio Task creation\nimport asyncio\n\nclass TelemetryServer:\n    def __init__(self):\n        self.active_tasks = set() # Store strong references to running background tasks\n\n    # --- BUGGY IMPLEMENTATION ---\n    async def handle_client_buggy(self, websocket):\n        async for message in websocket:\n            # Memory Leak: Loop creates an unawaited task for each message.\n            # Python's asyncio garbage collection fails to reclaim completed tasks\n            # if they are not properly referenced and cleared, or if global events register them.\n            asyncio.create_task(self.process_telemetry(message))\n\n    # --- FIXED IMPLEMENTATION ---\n    async def handle_client_fixed(self, websocket):\n        async for message in websocket:\n            task = asyncio.create_task(self.process_telemetry(message))\n            \n            # 1. Keep a strong reference to prevent garbage collection while running\n            self.active_tasks.add(task)\n            \n            # 2. Add callback to remove task from set upon completion\n            task.add_done_callback(self.active_tasks.discard)\n\n    async def process_telemetry(self, data):\n        # Simulate processing IO/DB write\n        await asyncio.sleep(0.1)\n        # Processed!",
+            "explanation": "### Root Cause Analysis\n\nIn Python's `asyncio`, tasks spawned via `asyncio.create_task` are scheduled on the event loop. If they are not awaited and no reference is kept, the loop retains a reference in its internal scheduling queue. Under high throughput, if tasks block on slow external I/O (like database writes), they stack up. Furthermore, if references to these tasks are kept in callback cycles or global event managers, they can never be garbage collected, resulting in a severe memory leak.\n\n### Debugging & Resolution Steps\n1. **Use `tracemalloc`:** Run `tracemalloc` to capture memory snapshots and identify which objects (specifically `asyncio.Task`) are growing.\n2. **Task Reference Management:** Maintain a `set` of active tasks and use `task.add_done_callback(active_tasks.discard)` to remove them immediately upon completion.\n3. **Structured Concurrency:** Use `asyncio.TaskGroup` (available in Python 3.11+) or `asyncio.gather` with limits to control execution scope.",
+            "tags": [
+                "Python",
+                "Asyncio",
+                "Memory Leak",
+                "WebSockets"
             ]
         }
     ]
