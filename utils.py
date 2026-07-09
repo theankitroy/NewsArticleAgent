@@ -2,6 +2,7 @@ import json
 import os
 import re
 import requests
+from groq import Groq
 
 # File to store user-created parody ideas
 IDEAS_FILE = "creator_ideas.json"
@@ -417,17 +418,13 @@ def save_ideas(ideas):
 
 def generate_comedy_with_groq(api_key, title, summary, tone="sarcastic", audience_focus="Global"):
     """
-    Calls Groq Chat Completions API using requests to generate a full comedy package 
+    Calls Groq Chat Completions API using the official Groq SDK to generate a full comedy package 
     optimized for silent B-roll, text overlay videos, targeting Indian or Global audiences.
     """
     if not api_key:
         api_key = DEFAULT_GROQ_KEY
         
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    client = Groq(api_key=api_key)
     
     audience_context = ""
     if audience_focus == "Indian":
@@ -484,30 +481,27 @@ def generate_comedy_with_groq(api_key, title, summary, tone="sarcastic", audienc
         ["Corporate Phrase 3", "Funny translation 3"]
       ],
       "reaction_hooks": [
-        "1. Reel Idea: Show B-roll of cursor wiggling with screen text: [Insert hook]",
+        "1. Reel Idea: Show B-roll of developer making tea while code runs with screen text: [Insert hook]",
         "2. Reel Idea: Show B-roll of closed laptop at 5:01 PM with screen text: [Insert hook]",
         "3. Reel Idea: Show B-roll of developer making tea while code runs with screen text: [Insert hook]"
       ]
     }}
     """
     
-    payload = {
-        "model": "llama-3.1-8b-instant",
-        "response_format": { "type": "json_object" },
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "temperature": 0.8
-    }
-    
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.8,
+            timeout=15.0
+        )
+        content = completion.choices[0].message.content
         comedy_data = json.loads(content)
         return comedy_data
     except Exception as e:
@@ -516,16 +510,12 @@ def generate_comedy_with_groq(api_key, title, summary, tone="sarcastic", audienc
 def generate_live_trends_with_groq(api_key, news_articles, audience_focus="Global"):
     """
     Queries Groq to analyze the latest tech news headlines and generate 
-    a set of 4 highly trending, faceless video concepts and memes.
+    a set of 4 highly trending, faceless video concepts and memes using the Groq SDK.
     """
     if not api_key:
         api_key = DEFAULT_GROQ_KEY
         
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    client = Groq(api_key=api_key)
     
     # Format headlines list
     headlines_text = "\n".join([f"- {art['title']} (Source: {art['source']})" for art in news_articles[:10]])
@@ -566,23 +556,20 @@ def generate_live_trends_with_groq(api_key, news_articles, audience_focus="Globa
     - 'relatability_reason': Why corporate workers will share this in their private team Slack channels.
     """
     
-    payload = {
-        "model": "llama-3.1-8b-instant",
-        "response_format": { "type": "json_object" },
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "temperature": 0.85
-    }
-    
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=20)
-        response.raise_for_status()
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.85,
+            timeout=20.0
+        )
+        content = completion.choices[0].message.content
         return json.loads(content)
     except Exception as e:
         raise RuntimeError(f"Groq API Error: {str(e)}")
@@ -761,20 +748,15 @@ def save_problem_solving(data):
 def generate_new_problem_with_groq(api_key):
     """
     Calls Groq to generate a new high-quality LeetCode problem or Production/Scaling bug
-    with complete Python code and detailed explanation.
+    with complete Python code and detailed explanation using the Groq SDK.
     """
     import random
-    import requests
     import json
     
     if not api_key:
         api_key = DEFAULT_GROQ_KEY
         
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    client = Groq(api_key=api_key)
     
     # Randomly select a problem type to ensure variety
     choices = [
@@ -803,23 +785,20 @@ def generate_new_problem_with_groq(api_key):
     }}
     """
     
-    payload = {
-        "model": "llama-3.1-8b-instant",
-        "response_format": { "type": "json_object" },
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "temperature": 0.85
-    }
-    
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=20)
-        response.raise_for_status()
-        res_data = response.json()
-        content = res_data["choices"][0]["message"]["content"]
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.85,
+            timeout=20.0
+        )
+        content = completion.choices[0].message.content
         new_prob = json.loads(content)
         return new_prob
     except Exception as e:
