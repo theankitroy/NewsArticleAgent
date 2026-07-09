@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from rss_feeds import RSS_FEEDS
 from rss_parser import fetch_feed
-from utils import PRESET_PARODIES, generate_parody_from_news, load_ideas, save_ideas, generate_comedy_with_groq, DEFAULT_GROQ_KEY, generate_live_trends_with_groq, generate_fallback_live_trends, load_problem_solving, save_problem_solving, generate_new_problem_with_groq
+from utils import generate_parody_from_news, load_ideas, save_ideas, generate_comedy_with_groq, DEFAULT_GROQ_KEY, generate_live_trends_with_groq, generate_fallback_live_trends, load_problem_solving, save_problem_solving, generate_new_problem_with_groq
 
 # 1. Page Configuration & Theme Initialization
 st.set_page_config(
